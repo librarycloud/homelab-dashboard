@@ -161,9 +161,27 @@ async function githubJson(pathname) {
   throw new Error(`连接 GitHub API 超时（${githubTimeoutMs / 1000} 秒，已重试一次）。请检查服务器网络、代理或 GITHUB_API_BASE 配置`)
 }
 
+function shortCommit(sha) {
+  return String(sha || '').slice(0, 7) || null
+}
+
+async function githubDefaultBranch(repository) {
+  const details = await githubJson(`/repos/${repository}`)
+  if (!details?.default_branch) throw new Error('无法获取 GitHub 仓库默认分支')
+  return details.default_branch
+}
+
+async function githubPackageVersion(repository, branch) {
+  const file = await githubJson(`/repos/${repository}/contents/package.json?ref=${encodeURIComponent(branch)}`)
+  if (!file?.content) throw new Error('GitHub 仓库根目录未找到 package.json')
+  const packageJson = JSON.parse(Buffer.from(file.content.replace(/\s/g, ''), 'base64').toString('utf8'))
+  return packageJson.version || null
+}
+
 async function checkVersion(service) {
   const now = new Date()
   const update = { version_status: 0, last_check_at: now }
+  let comparisonHandled = false
 
   if (service.version_type === 0) throw new Error('手动维护类型不支持自动检测')
 
@@ -171,9 +189,22 @@ async function checkVersion(service) {
     const repository = normalizeGithubRepository(service.github_url)
     if (!repository) throw new Error('GitHub 地址必须是 github.com/<组织或用户>/<仓库>')
     if (service.version_type === 1) {
-      const tags = await githubJson(`/repos/${repository}/tags?per_page=1`)
-      if (!Array.isArray(tags) || !tags[0]?.name) throw new Error('该 GitHub 仓库没有可用的 Git 标签，请改用 GitHub Release 或手动维护')
-      update.remote_version = tags[0].name
+      let localCommit = service.local_version
+      if (service.local_path) {
+        const { stdout } = await execFileAsync('git', ['-C', service.local_path, 'rev-parse', 'HEAD'], { timeout: 10000 })
+        localCommit = stdout.trim() || null
+        update.local_version = shortCommit(localCommit)
+      }
+      const branch = await githubDefaultBranch(repository)
+      const remoteCommit = await githubJson(`/repos/${repository}/commits/${encodeURIComponent(branch)}`)
+      if (!remoteCommit?.sha) throw new Error('无法获取 GitHub 默认分支的最新提交')
+      update.remote_version = shortCommit(remoteCommit.sha)
+
+      if (localCommit) {
+        const comparison = await githubJson(`/repos/${repository}/compare/${encodeURIComponent(localCommit)}...${remoteCommit.sha}`)
+        update.version_status = Number(comparison.ahead_by || 0) > 0 ? 2 : 1
+        comparisonHandled = true
+      }
     } else {
       const release = await githubJson(`/repos/${repository}/releases/latest`)
       if (!release?.tag_name) throw new Error('该 GitHub 仓库没有可用的 Release，请改用 Git 标签或手动维护')
@@ -181,16 +212,17 @@ async function checkVersion(service) {
     }
   }
 
-  if (service.version_type === 1 && service.local_path) {
-    const { stdout } = await execFileAsync('git', ['-C', service.local_path, 'describe', '--tags', '--always'], { timeout: 10000 })
-    update.local_version = stdout.trim() || null
-  }
-
   if (service.version_type === 3) {
     if (!service.local_path) throw new Error('package.json 检测需要填写本地路径')
     const packagePath = path.join(service.local_path, 'package.json')
     const packageJson = JSON.parse(await readFile(packagePath, 'utf8'))
     update.local_version = packageJson.version || null
+    const repository = normalizeGithubRepository(service.github_url)
+    if (repository) {
+      update.remote_version = await githubPackageVersion(repository, await githubDefaultBranch(repository))
+    } else {
+      update.remote_version = null
+    }
   }
 
   if (service.version_type === 4) {
@@ -207,7 +239,7 @@ async function checkVersion(service) {
     }
   }
 
-  if (update.remote_version !== undefined || update.local_version !== undefined) {
+  if (!comparisonHandled && (update.remote_version !== undefined || update.local_version !== undefined)) {
     update.version_status = compareVersions(update.local_version ?? service.local_version, update.remote_version ?? service.remote_version)
   }
   return update
