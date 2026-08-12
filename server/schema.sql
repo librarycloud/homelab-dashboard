@@ -9,21 +9,27 @@ CREATE TABLE services (
   name VARCHAR(100) NOT NULL,
   description VARCHAR(255) NULL,
   category VARCHAR(50) NULL,
-  status ENUM('running', 'warning', 'error', 'offline', 'maintenance') NOT NULL DEFAULT 'offline',
+  icon VARCHAR(32) NOT NULL DEFAULT 'Monitor',
+  sort_order INT NOT NULL DEFAULT 0,
+  -- 0=offline, 1=running, 2=warning, 3=error, 4=maintenance
+  status TINYINT UNSIGNED NOT NULL DEFAULT 0,
 
   github_url VARCHAR(500) NULL,
   lan_url VARCHAR(500) NULL,
   wan_url VARCHAR(500) NULL,
   local_path VARCHAR(500) NULL,
-  version_type ENUM('git_tag', 'git_release', 'package_json', 'docker', 'manual') NOT NULL DEFAULT 'manual',
+  -- 0=manual, 1=git_tag, 2=git_release, 3=package_json, 4=docker
+  version_type TINYINT UNSIGNED NOT NULL DEFAULT 0,
   local_version VARCHAR(80) NULL,
   remote_version VARCHAR(80) NULL,
-  version_status ENUM('latest', 'update_available', 'unknown', 'check_failed') NOT NULL DEFAULT 'unknown',
+  -- 0=unknown, 1=latest, 2=update_available, 3=check_failed
+  version_status TINYINT UNSIGNED NOT NULL DEFAULT 0,
 
   docker_enabled BOOLEAN NOT NULL DEFAULT FALSE,
   docker_name VARCHAR(150) NULL,
   docker_image VARCHAR(255) NULL,
-  docker_status ENUM('running', 'stopped', 'exited', 'unhealthy', 'unknown') NOT NULL DEFAULT 'unknown',
+  -- 0=unknown, 1=running, 2=stopped, 3=exited, 4=unhealthy
+  docker_status TINYINT UNSIGNED NOT NULL DEFAULT 0,
   docker_health VARCHAR(30) NULL,
   docker_restart_count INT UNSIGNED NOT NULL DEFAULT 0,
   docker_last_check_at DATETIME NULL,
