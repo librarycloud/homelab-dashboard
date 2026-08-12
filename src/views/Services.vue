@@ -81,10 +81,11 @@ const statusOptions = [
 ];
 const versionTypes = [
   { value: 0, label: "手动维护" },
-  { value: 1, label: "Git 提交" },
+  { value: 1, label: "Git 标签" },
   { value: 2, label: "GitHub Release" },
   { value: 3, label: "package.json" },
   { value: 4, label: "Docker 镜像" },
+  { value: 5, label: "Git 提交" },
 ];
 const versionStatuses = [
   { value: 0, label: "未知" },

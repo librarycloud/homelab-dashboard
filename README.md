@@ -88,7 +88,7 @@ Service state fields are stored as numbers:
 | Field | Mapping |
 | --- | --- |
 | `status` | `0` offline, `1` running, `2` warning, `3` error, `4` maintenance |
-| `version_type` | `0` manual, `1` git tag, `2` GitHub release, `3` package.json, `4` Docker image |
+| `version_type` | `0` manual, `1` git tag, `2` GitHub release, `3` package.json, `4` Docker image, `5` Git commit |
 | `version_status` | `0` unknown, `1` latest, `2` update available, `3` check failed |
 | `docker_status` | `0` unknown, `1` running, `2` stopped, `3` exited, `4` unhealthy |
 

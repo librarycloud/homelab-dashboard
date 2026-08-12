@@ -54,7 +54,7 @@ const textFields = ['description', 'category', 'github_url', 'lan_url', 'wan_url
 const serviceIcons = new Set(['Monitor', 'Platform', 'Avatar', 'UserFilled', 'DataAnalysis', 'DataBoard', 'PieChart', 'Odometer', 'Cpu', 'Connection', 'House', 'Grid', 'Folder', 'FolderOpened', 'Picture', 'Camera', 'Calendar', 'Lock', 'Key', 'User', 'Message', 'Bell', 'Headset', 'Link', 'Share', 'Document', 'CopyDocument', 'Files', 'Download', 'Upload', 'AlarmClock', 'Film', 'VideoCamera', 'VideoCameraFilled', 'ShoppingCart', 'Coin', 'Tools', 'Setting', 'Management', 'Tickets', 'Box', 'Wallet', 'ArrowDown', 'ArrowUp', 'Operation', 'VideoPlay', 'Goods', 'TrendCharts', 'CircleCheck', 'Warning', 'InfoFilled'])
 const numericFields = {
   status: [0, 1, 2, 3, 4],
-  version_type: [0, 1, 2, 3, 4],
+  version_type: [0, 1, 2, 3, 4, 5],
   version_status: [0, 1, 2, 3],
   docker_status: [0, 1, 2, 3, 4]
 }
@@ -185,10 +185,14 @@ async function checkVersion(service) {
 
   if (service.version_type === 0) throw new Error('手动维护类型不支持自动检测')
 
-  if (service.version_type === 1 || service.version_type === 2) {
+  if (service.version_type === 1 || service.version_type === 2 || service.version_type === 5) {
     const repository = normalizeGithubRepository(service.github_url)
     if (!repository) throw new Error('GitHub 地址必须是 github.com/<组织或用户>/<仓库>')
     if (service.version_type === 1) {
+      const tags = await githubJson(`/repos/${repository}/tags?per_page=1`)
+      if (!Array.isArray(tags) || !tags[0]?.name) throw new Error('该 GitHub 仓库没有可用的 Git 标签，请改用 Git 提交或手动维护')
+      update.remote_version = tags[0].name
+    } else if (service.version_type === 5) {
       let localCommit = service.local_version
       if (service.local_path) {
         const { stdout } = await execFileAsync('git', ['-C', service.local_path, 'rev-parse', 'HEAD'], { timeout: 10000 })
@@ -210,6 +214,11 @@ async function checkVersion(service) {
       if (!release?.tag_name) throw new Error('该 GitHub 仓库没有可用的 Release，请改用 Git 标签或手动维护')
       update.remote_version = release.tag_name
     }
+  }
+
+  if (service.version_type === 1 && service.local_path) {
+    const { stdout } = await execFileAsync('git', ['-C', service.local_path, 'describe', '--tags', '--always'], { timeout: 10000 })
+    update.local_version = stdout.trim() || null
   }
 
   if (service.version_type === 3) {
