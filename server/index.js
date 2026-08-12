@@ -45,7 +45,7 @@ function requireAuth(req, res, next) {
 const serviceColumns = `id, name, description, category, icon, status,
   sort_order,
   github_url, lan_url, wan_url, local_path, version_type,
-  local_version, remote_version, version_status,
+  NULLIF(local_version, 'null') AS local_version, NULLIF(remote_version, 'null') AS remote_version, version_status,
   docker_enabled, docker_name, docker_image, docker_status,
   docker_health, docker_restart_count, docker_last_check_at, frp_username, frp_password,
   favorite, notes, last_check_at, created_at, updated_at`
@@ -172,10 +172,12 @@ async function checkVersion(service) {
     if (!repository) throw new Error('GitHub 地址必须是 github.com/<组织或用户>/<仓库>')
     if (service.version_type === 1) {
       const tags = await githubJson(`/repos/${repository}/tags?per_page=1`)
-      update.remote_version = tags[0]?.name || null
+      if (!Array.isArray(tags) || !tags[0]?.name) throw new Error('该 GitHub 仓库没有可用的 Git 标签，请改用 GitHub Release 或手动维护')
+      update.remote_version = tags[0].name
     } else {
       const release = await githubJson(`/repos/${repository}/releases/latest`)
-      update.remote_version = release.tag_name || null
+      if (!release?.tag_name) throw new Error('该 GitHub 仓库没有可用的 Release，请改用 Git 标签或手动维护')
+      update.remote_version = release.tag_name
     }
   }
 
