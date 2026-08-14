@@ -6,6 +6,7 @@ import 'element-plus/es/components/message/style/css'
 import 'element-plus/es/components/message-box/style/css'
 import { authApi, serviceApi, systemApi } from '../api'
 import { readServiceCategories, writeServiceCategories } from '../serviceCategories'
+import { readSiteName, saveSiteName } from '../siteName'
 import { normalizePrimary, PRIMARY_PRESETS, readPrimaryColor, savePrimaryColor } from '../theme'
 
 const passwordForm = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' })
@@ -21,6 +22,7 @@ const loadingAudit = ref(false)
 const categories = ref(readServiceCategories())
 const newCategory = ref('')
 const primaryColor = ref(readPrimaryColor())
+const siteName = ref(readSiteName())
 const primaryPresets = PRIMARY_PRESETS
 
 const sessionText = computed(() => '当前会话有效期 24 小时，凭据由服务端安全保存')
@@ -33,6 +35,11 @@ function selectPrimaryColor(value) {
 }
 function resetPrimaryColor() {
   selectPrimaryColor('#42d3b2')
+}
+function saveSiteNameSetting() {
+  if (!siteName.value.trim()) return ElMessage.warning('请输入站点名称')
+  siteName.value = saveSiteName(siteName.value)
+  ElMessage.success('站点名称已更新')
 }
 function savePreferences() {
   localStorage.setItem('homelab-checking', checking.value ? 'on' : 'off')
@@ -111,6 +118,7 @@ onMounted(() => { void Promise.all([loadSystem(), loadLoginAudit()]) })
 <template>
   <div class="page-head"><div><div class="eyebrow">WORKSPACE · SETTINGS</div><h1>系统设置</h1><p>管理账户安全、服务检查、通知、备份和系统运行信息。</p></div></div>
   <div class="settings-grid">
+    <section class="settings-panel"><div class="settings-heading"><div class="settings-icon system"><el-icon><Monitor /></el-icon></div><div><h2>站点名称</h2><span>用于浏览器标签页和界面品牌显示</span></div></div><el-form class="settings-form" @submit.prevent="saveSiteNameSetting"><el-form-item label="名称"><el-input v-model="siteName" maxlength="60" show-word-limit placeholder="例如：HomeLab" @keyup.enter="saveSiteNameSetting" /></el-form-item><el-button type="primary" @click="saveSiteNameSetting">保存名称</el-button></el-form></section>
     <section class="settings-panel"><div class="settings-heading"><div class="settings-icon security"><el-icon><Lock /></el-icon></div><div><h2>账户安全</h2><span>修改管理员密码和查看会话状态</span></div></div><el-form label-position="top" class="settings-form"><el-form-item label="当前密码"><el-input v-model="passwordForm.currentPassword" type="password" show-password /></el-form-item><el-form-item label="新密码"><el-input v-model="passwordForm.newPassword" type="password" show-password /></el-form-item><el-form-item label="确认新密码"><el-input v-model="passwordForm.confirmPassword" type="password" show-password /></el-form-item><el-button type="primary" :loading="passwordLoading" @click="changePassword">更新密码</el-button></el-form><div class="settings-note"><el-icon><InfoFilled /></el-icon>{{ sessionText }}</div></section>
     <section class="settings-panel"><div class="settings-heading"><div class="settings-icon theme"><el-icon><Brush /></el-icon></div><div><h2>主题外观</h2><span>自定义界面主色，选择后立即预览</span></div></div><div class="theme-color-control"><div class="theme-color-picker"><el-color-picker v-model="primaryColor" :predefine="primaryPresets" @change="previewPrimaryColor" /><div><strong>{{ (primaryColor || '#42d3b2').toUpperCase() }}</strong><p>支持 HEX 颜色值</p></div></div><el-button text @click="resetPrimaryColor">恢复默认</el-button></div><div class="theme-presets"><button v-for="color in primaryPresets" :key="color" class="theme-swatch" :class="{ selected: primaryColor === color }" :style="{ backgroundColor: color }" :title="`使用 ${color} 主题色`" @click="selectPrimaryColor(color)"><el-icon v-if="primaryColor === color"><CircleCheck /></el-icon></button></div></section>
     <section class="settings-panel"><div class="settings-heading"><div class="settings-icon service"><el-icon><Refresh /></el-icon></div><div><h2>服务检查</h2><span>控制版本和服务状态检查频率</span></div></div><div class="setting-row"><div><strong>启用自动检查</strong><p>在服务列表中定期刷新检查结果</p></div><el-switch v-model="checking" /></div><div class="setting-row"><div><strong>检查间隔</strong><p>页面打开时使用的刷新周期</p></div><el-select v-model="checkInterval" popper-class="homelab-select-popper" style="width: 130px"><el-option label="每 15 分钟" value="15" /><el-option label="每 30 分钟" value="30" /><el-option label="每 1 小时" value="60" /></el-select></div><el-button @click="savePreferences">保存检查设置</el-button></section>

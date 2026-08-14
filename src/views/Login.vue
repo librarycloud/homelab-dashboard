@@ -5,12 +5,14 @@ import { ElMessage } from 'element-plus'
 import 'element-plus/es/components/message/style/css'
 import { useRoute, useRouter } from 'vue-router'
 import { authApi } from '../api'
+import { readSiteName } from '../siteName'
 
 const router = useRouter()
 const route = useRoute()
 const username = ref('admin')
 const password = ref('')
 const loading = ref(false)
+const siteName = readSiteName()
 
 async function submit() {
   if (!username.value.trim() || !password.value) {
@@ -33,7 +35,7 @@ async function submit() {
   <div class="login-page">
     <div class="login-orbit"></div>
     <div class="login-box">
-      <div class="brand login-brand"><div class="brand-mark">H</div><div><strong>HomeLab</strong><span>CONTROL CENTER</span></div></div>
+      <div class="brand login-brand"><div class="brand-mark">H</div><div><strong>{{ siteName }}</strong><span>CONTROL CENTER</span></div></div>
       <h1>欢迎回来</h1>
       <p>登录你的家庭实验室控制中心</p>
       <el-form @submit.prevent="submit">

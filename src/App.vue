@@ -1,15 +1,17 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { Bell, Close, Folder, Grid, House, Moon, Search, Setting, Sunny, WarningFilled } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import 'element-plus/es/components/message/style/css'
 import { authApi, serviceApi } from './api'
+import { applySiteName, readSiteName } from './siteName'
 import { applyPrimaryColor, readPrimaryColor } from './theme'
 
 const route = useRoute()
 const router = useRouter()
 const dark = ref(localStorage.getItem('homelab-theme') !== 'light')
+const siteName = ref(readSiteName())
 const search = ref('')
 const services = ref([])
 const noticeSettings = ref({ error: true, update: true, docker: false })
@@ -41,6 +43,7 @@ async function loadNotices() {
 }
 function openNotices() { noticeOpen.value = !noticeOpen.value }
 function closeNotices() { noticeOpen.value = false }
+function syncSiteName(event) { siteName.value = event.detail || readSiteName(); applySiteName(siteName.value) }
 function persistDismissedNotices() { localStorage.setItem('homelab-dismissed-notices', JSON.stringify([...dismissedNotices.value])) }
 function dismissNotice(notice) { dismissedNotices.value = new Set([...dismissedNotices.value, notice.key]); persistDismissedNotices() }
 function clearNotices() { dismissedNotices.value = new Set([...dismissedNotices.value, ...notices.value.map((notice) => notice.key)]); persistDismissedNotices(); noticeOpen.value = false }
@@ -53,6 +56,9 @@ watch(dark, (value) => {
   localStorage.setItem('homelab-theme', value ? 'dark' : 'light')
   document.documentElement.classList.toggle('homelab-light', !value)
 }, { immediate: true })
+onMounted(() => window.addEventListener('homelab-site-name-changed', syncSiteName))
+onUnmounted(() => window.removeEventListener('homelab-site-name-changed', syncSiteName))
+applySiteName(siteName.value)
 applyPrimaryColor(readPrimaryColor())
 loadNotices()
 watch(() => route.path, (path) => {
@@ -64,13 +70,13 @@ watch(() => route.path, (path) => {
   <router-view v-if="isLoginPage" />
   <div v-else class="app-shell" :class="{ light: !dark }">
     <aside class="sidebar">
-      <div class="brand"><div class="brand-mark">H</div><div><strong>HomeLab</strong><span>CONTROL CENTER</span></div></div>
+      <div class="brand"><div class="brand-mark">H</div><div><strong>{{ siteName }}</strong><span>CONTROL CENTER</span></div></div>
       <div class="workspace-label">工作区</div>
       <nav><button v-for="item in nav" :key="item.path" class="nav-item" :class="{ active: route.path === item.path }" @click="go(item.path)"><el-icon><component :is="item.icon" /></el-icon><span>{{ item.label }}</span></button></nav>
       <div class="sidebar-bottom"><button class="nav-item" :class="{ active: route.path === '/settings' }" @click="go('/settings')"><el-icon><Setting /></el-icon><span>系统设置</span></button><div class="system-state"><i></i><span>系统运行正常</span><small>v0.1.0</small></div></div>
     </aside>
     <main class="main-area">
-      <header class="topbar"><div class="mobile-brand"><div class="brand-mark">H</div><strong>HomeLab</strong></div><div class="crumb"><span>HomeLab</span><b>/</b><strong>{{ pageTitle }}</strong></div><div class="top-actions"><div class="search-box"><el-icon><Search /></el-icon><input v-model="search" placeholder="搜索服务..." /><kbd>⌘ K</kbd></div><div class="notice-wrap"><button class="icon-btn" :class="{ active: noticeOpen }" title="通知" @click="openNotices"><el-icon><Bell /></el-icon><i v-if="notices.length" class="notice-dot"></i></button><div v-if="noticeOpen" class="notice-panel"><div class="notice-head"><strong>通知</strong><div><span>{{ notices.length }} 条</span><button v-if="notices.length" class="notice-clear" title="清除全部通知" @click.stop="clearNotices">清除</button></div></div><div v-if="!notices.length" class="notice-empty"><el-icon><Bell /></el-icon><span>暂无需要处理的通知</span></div><div v-for="notice in notices" :key="notice.key" class="notice-item"><span class="notice-icon" :class="notice.type"><el-icon><component :is="notice.icon" /></el-icon></span><span><strong>{{ notice.title }}</strong><small>{{ notice.text }}</small></span><button class="notice-dismiss" title="清除通知" @click.stop="dismissNotice(notice)"><el-icon><Close /></el-icon></button></div></div></div><button class="icon-btn theme-toggle" :title="dark ? '切换浅色主题' : '切换深色主题'" @click="dark = !dark"><el-icon><Sunny v-if="dark" /><Moon v-else /></el-icon><span>{{ dark ? '深色' : '浅色' }}</span></button><button class="user-chip" title="退出登录" @click="logout"><div class="avatar">A</div><div class="user-copy"><strong>admin</strong><span>管理员</span></div></button></div></header>
+      <header class="topbar"><div class="mobile-brand"><div class="brand-mark">H</div><strong>{{ siteName }}</strong></div><div class="crumb"><span>{{ siteName }}</span><b>/</b><strong>{{ pageTitle }}</strong></div><div class="top-actions"><div class="search-box"><el-icon><Search /></el-icon><input v-model="search" placeholder="搜索服务..." /><kbd>⌘ K</kbd></div><div class="notice-wrap"><button class="icon-btn" :class="{ active: noticeOpen }" title="通知" @click="openNotices"><el-icon><Bell /></el-icon><i v-if="notices.length" class="notice-dot"></i></button><div v-if="noticeOpen" class="notice-panel"><div class="notice-head"><strong>通知</strong><div><span>{{ notices.length }} 条</span><button v-if="notices.length" class="notice-clear" title="清除全部通知" @click.stop="clearNotices">清除</button></div></div><div v-if="!notices.length" class="notice-empty"><el-icon><Bell /></el-icon><span>暂无需要处理的通知</span></div><div v-for="notice in notices" :key="notice.key" class="notice-item"><span class="notice-icon" :class="notice.type"><el-icon><component :is="notice.icon" /></el-icon></span><span><strong>{{ notice.title }}</strong><small>{{ notice.text }}</small></span><button class="notice-dismiss" title="清除通知" @click.stop="dismissNotice(notice)"><el-icon><Close /></el-icon></button></div></div></div><button class="icon-btn theme-toggle" :title="dark ? '切换浅色主题' : '切换深色主题'" @click="dark = !dark"><el-icon><Sunny v-if="dark" /><Moon v-else /></el-icon><span>{{ dark ? '深色' : '浅色' }}</span></button><button class="user-chip" title="退出登录" @click="logout"><div class="avatar">A</div><div class="user-copy"><strong>admin</strong><span>管理员</span></div></button></div></header>
       <div class="mobile-tabs"><button v-for="item in nav" :key="item.path" :class="{ active: route.path === item.path }" @click="go(item.path)"><el-icon><component :is="item.icon" /></el-icon>{{ item.label }}</button></div>
       <div class="content"><router-view /></div>
     </main>
