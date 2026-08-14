@@ -244,7 +244,7 @@ app.get('/api/system/login-audit', requireAuth, async (req, res) => {
       FROM login_audit_logs
       ORDER BY created_at DESC, id DESC
       LIMIT ${limit}`)
-    res.json(rows.map((row) => ({ ...row, success: Boolean(row.success) })))
+    res.json(rows.map((row) => ({ ...row, id: String(row.id), success: Boolean(row.success) })))
   } catch (error) {
     if (error.code === 'ER_NO_SUCH_TABLE') {
       return res.status(503).json({ message: '登录日志表尚未创建，请执行 server/migrations/004_login_audit_logs.sql' })
