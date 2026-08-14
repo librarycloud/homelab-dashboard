@@ -4,6 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import 'dotenv/config'
 import express from 'express'
+import { rateLimit } from 'express-rate-limit'
 import { pool, query } from './db.js'
 import { checkVersion, refreshServiceStatus } from './serviceChecks.js'
 
@@ -14,6 +15,19 @@ const sessions = new Map()
 let adminPassword = process.env.ADMIN_PASSWORD
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const clientDist = path.resolve(__dirname, '../dist')
+const clientIndexHtml = await readFile(path.join(clientDist, 'index.html'), 'utf8').catch(() => null)
+
+function trustProxySetting(value = 'loopback,linklocal,uniquelocal') {
+  const entries = value.split(',').map((entry) => entry.trim()).filter(Boolean)
+  if (entries.some((entry) => ['true', '*'].includes(entry.toLowerCase()))) {
+    console.warn('TRUST_PROXY cannot trust every address; using safe local-network defaults')
+    return ['loopback', 'linklocal', 'uniquelocal']
+  }
+  if (entries.length === 1 && ['false', 'off', '0'].includes(entries[0].toLowerCase())) return false
+  return entries
+}
+
+app.set('trust proxy', trustProxySetting(process.env.TRUST_PROXY))
 app.use(express.json())
 
 function parseCookies(header = '') {
@@ -104,16 +118,78 @@ function verifyPassword(password) {
   return expectedBuffer.length === actualBuffer.length && crypto.timingSafeEqual(expectedBuffer, actualBuffer)
 }
 
-app.post('/api/auth/login', (req, res) => {
+function positiveInteger(value, fallback) {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function normalizeIp(address = '') {
+  return String(address).replace(/^::ffff:/, '').slice(0, 45)
+}
+
+function loginRequestDetails(req) {
+  const remoteAddress = normalizeIp(req.socket?.remoteAddress)
+  const trustedChain = [...(req.ips || []).map(normalizeIp), remoteAddress].filter(Boolean)
+  return {
+    ipAddress: normalizeIp(req.ip || remoteAddress) || 'unknown',
+    remoteAddress: remoteAddress || null,
+    proxyChain: trustedChain.length > 1 ? trustedChain.join(', ').slice(0, 1000) : null,
+    userAgent: typeof req.get('user-agent') === 'string' ? req.get('user-agent').slice(0, 500) : null
+  }
+}
+
+async function recordLoginAttempt(req, { username, success, failureReason = null }) {
+  const details = loginRequestDetails(req)
+  try {
+    await query(
+      `INSERT INTO login_audit_logs
+        (username, success, failure_reason, ip_address, remote_address, proxy_chain, user_agent)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [String(username || '').slice(0, 100), success, failureReason, details.ipAddress, details.remoteAddress, details.proxyChain, details.userAgent]
+    )
+  } catch (error) {
+    console.error('Unable to record login audit event:', error.message)
+  }
+}
+
+const loginLimiter = rateLimit({
+  windowMs: positiveInteger(process.env.LOGIN_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000),
+  limit: positiveInteger(process.env.LOGIN_RATE_LIMIT_MAX, 10),
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  handler: (req, res) => {
+    const username = typeof req.body?.username === 'string' ? req.body.username.trim() : ''
+    if (req.rateLimit?.used === req.rateLimit?.limit + 1) {
+      void recordLoginAttempt(req, { username, success: false, failureReason: 'rate_limited' })
+    }
+    res.status(429).json({ message: '登录尝试过于频繁，请稍后再试' })
+  }
+})
+
+const passwordChangeLimiter = rateLimit({
+  windowMs: positiveInteger(process.env.PASSWORD_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000),
+  limit: positiveInteger(process.env.PASSWORD_RATE_LIMIT_MAX, 5),
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { message: '密码修改请求过于频繁，请稍后再试' }
+})
+
+app.post('/api/auth/login', loginLimiter, (req, res) => {
+  const username = typeof req.body?.username === 'string' ? req.body.username.trim() : ''
   if (!process.env.ADMIN_USERNAME || !adminPassword) {
+    void recordLoginAttempt(req, { username, success: false, failureReason: 'auth_not_configured' })
     return res.status(503).json({ message: '管理员登录尚未配置，请设置 ADMIN_USERNAME 和 ADMIN_PASSWORD' })
   }
-  const username = typeof req.body?.username === 'string' ? req.body.username.trim() : ''
   const password = typeof req.body?.password === 'string' ? req.body.password : ''
-  if (username !== process.env.ADMIN_USERNAME || !password || !verifyPassword(password)) return res.status(401).json({ message: '用户名或密码错误' })
+  if (username !== process.env.ADMIN_USERNAME || !password || !verifyPassword(password)) {
+    void recordLoginAttempt(req, { username, success: false, failureReason: 'invalid_credentials' })
+    return res.status(401).json({ message: '用户名或密码错误' })
+  }
   const token = crypto.randomBytes(32).toString('hex')
   sessions.set(token, { username, expiresAt: Date.now() + sessionTtl })
   setSessionCookie(res, token)
+  void recordLoginAttempt(req, { username, success: true })
   res.json({ ok: true, user: { username } })
 })
 
@@ -126,7 +202,7 @@ app.post('/api/auth/logout', (req, res) => {
   res.json({ ok: true })
 })
 
-app.post('/api/auth/password', requireAuth, async (req, res) => {
+app.post('/api/auth/password', passwordChangeLimiter, requireAuth, async (req, res) => {
   const currentPassword = typeof req.body?.currentPassword === 'string' ? req.body.currentPassword : ''
   const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : ''
   if (!verifyPassword(currentPassword)) return res.status(400).json({ message: '当前密码错误' })
@@ -152,6 +228,29 @@ app.get('/api/system/info', requireAuth, async (_req, res) => {
   let database = 'offline'
   try { await query('SELECT 1 AS connected'); database = 'connected' } catch {}
   res.json({ appVersion: '0.1.0', nodeVersion: process.version, platform: process.platform, uptime: process.uptime(), database, apiPort: port })
+})
+
+app.get('/api/system/login-audit', requireAuth, async (req, res) => {
+  const requestedLimit = Number(req.query.limit)
+  const limit = Number.isInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 30
+  try {
+    const rows = await query(`SELECT id, username, success,
+      failure_reason AS failureReason,
+      ip_address AS ipAddress,
+      remote_address AS remoteAddress,
+      proxy_chain AS proxyChain,
+      user_agent AS userAgent,
+      created_at AS createdAt
+      FROM login_audit_logs
+      ORDER BY created_at DESC, id DESC
+      LIMIT ${limit}`)
+    res.json(rows.map((row) => ({ ...row, success: Boolean(row.success) })))
+  } catch (error) {
+    if (error.code === 'ER_NO_SUCH_TABLE') {
+      return res.status(503).json({ message: '登录日志表尚未创建，请执行 server/migrations/004_login_audit_logs.sql' })
+    }
+    sendDatabaseError(res, error)
+  }
 })
 
 app.get('/api/dashboard', requireAuth, async (_req, res) => {
@@ -309,7 +408,10 @@ app.delete('/api/services/:id', requireAuth, async (req, res) => {
 })
 
 app.use(express.static(clientDist))
-app.get('*', (_req, res) => res.sendFile(path.join(clientDist, 'index.html')))
+app.get('*', (_req, res) => {
+  if (!clientIndexHtml) return res.status(404).send('Dashboard client is not built')
+  res.type('html').send(clientIndexHtml)
+})
 
 const server = app.listen(port, async () => {
   try {

@@ -54,6 +54,20 @@ ADMIN_PASSWORD=your_password
 
 登录成功后会创建 24 小时 HttpOnly 会话；退出登录或会话过期后，控制台路由会自动回到登录页。
 
+登录接口默认限制同一来源 15 分钟内最多 10 次失败尝试，修改密码接口默认限制 5 次请求。成功和失败的登录会写入审计日志，可在“系统设置”查看最近记录。已有数据库需要先执行：
+
+```bash
+mariadb -u root -p YOUR_DATABASE_NAME < server/migrations/004_login_audit_logs.sql
+```
+
+通过 FRP、Nginx 或 Caddy 代理访问时，应用会根据可信代理链读取访客 IP。默认仅信任本机和内网代理，也可以在 `.env` 中明确填写代理节点 IP 或 CIDR：
+
+```env
+TRUST_PROXY=loopback,linklocal,uniquelocal
+```
+
+HTTP/HTTPS 代理需要传递 `X-Forwarded-For`。纯 TCP FRP 转发若未启用 Proxy Protocol 或未经过会写入转发头的反向代理，应用只能记录 FRP 节点地址。不要把 `TRUST_PROXY` 设置为 `true` 或 `*`，否则公网客户端可能伪造来源 IP。
+
 The API reads the `services` table through a MariaDB connection pool. Database passwords stay in `.env` and are excluded by `.gitignore`.
 
 The first version uses only one business table, `services`. Docker, frp, local path, GitHub version data, and access URLs are stored directly on that record.
@@ -103,6 +117,7 @@ mariadb -u root -p YOUR_DATABASE_NAME < server/migrations/001_numeric_statuses.s
 ```bash
 mariadb -u root -p YOUR_DATABASE_NAME < server/migrations/002_service_icons.sql
 mariadb -u root -p YOUR_DATABASE_NAME < server/migrations/003_service_sort_order.sql
+mariadb -u root -p YOUR_DATABASE_NAME < server/migrations/004_login_audit_logs.sql
 ```
 
 ## Version detection fields

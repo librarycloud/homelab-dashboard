@@ -19,7 +19,10 @@ export const authApi = {
   changePassword: (payload) => request('/auth/password', { method: 'POST', body: JSON.stringify(payload) })
 }
 
-export const systemApi = { info: () => request('/system/info') }
+export const systemApi = {
+  info: () => request('/system/info'),
+  loginAudit: (limit = 30) => request(`/system/login-audit?limit=${limit}`)
+}
 
 export const serviceApi = {
   list: () => request('/services'),

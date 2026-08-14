@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { Download, Lock, Bell, Refresh, Upload, Monitor, CircleCheck, Warning, InfoFilled, Setting, Brush } from '@element-plus/icons-vue'
+import { Download, Lock, Bell, Refresh, Upload, Monitor, CircleCheck, Warning, InfoFilled, Setting, Brush, UserFilled } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import 'element-plus/es/components/message/style/css'
 import 'element-plus/es/components/message-box/style/css'
@@ -16,6 +16,8 @@ const notifications = reactive({ error: localStorage.getItem('homelab-notify-err
 const system = ref(null)
 const importInput = ref(null)
 const loadingSystem = ref(false)
+const loginAudit = ref([])
+const loadingAudit = ref(false)
 const categories = ref(readServiceCategories())
 const newCategory = ref('')
 const primaryColor = ref(readPrimaryColor())
@@ -91,8 +93,19 @@ async function loadSystem() {
   loadingSystem.value = true
   try { system.value = await systemApi.info() } catch (error) { ElMessage.error(error.message) } finally { loadingSystem.value = false }
 }
+async function loadLoginAudit() {
+  loadingAudit.value = true
+  try { loginAudit.value = await systemApi.loginAudit(30) } catch (error) { ElMessage.error(error.message) } finally { loadingAudit.value = false }
+}
 function formatUptime(seconds) { const total = Math.floor(seconds || 0); return `${Math.floor(total / 86400)} 天 ${Math.floor(total / 3600) % 24} 小时 ${Math.floor(total / 60) % 60} 分钟` }
-onMounted(loadSystem)
+function formatAuditTime(value) { return value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'short', timeStyle: 'medium' }).format(new Date(value)) : '-' }
+function failureReasonText(reason) {
+  return { invalid_credentials: '凭据错误', rate_limited: '触发限流', auth_not_configured: '登录未配置' }[reason] || reason || '-'
+}
+function auditIpTitle(entry) {
+  return [`识别地址：${entry.ipAddress}`, entry.remoteAddress && `直连地址：${entry.remoteAddress}`, entry.proxyChain && `可信代理链：${entry.proxyChain}`].filter(Boolean).join('\n')
+}
+onMounted(() => { void Promise.all([loadSystem(), loadLoginAudit()]) })
 </script>
 
 <template>
@@ -105,6 +118,7 @@ onMounted(loadSystem)
     <section class="settings-panel"><div class="settings-heading"><div class="settings-icon notice"><el-icon><Bell /></el-icon></div><div><h2>通知设置</h2><span>选择需要关注的系统事件</span></div></div><div class="setting-row"><div><strong>异常服务</strong><p>服务离线或进入异常状态时提醒</p></div><el-switch v-model="notifications.error" /></div><div class="setting-row"><div><strong>版本更新</strong><p>检测到可用新版本时提醒</p></div><el-switch v-model="notifications.update" /></div><div class="setting-row"><div><strong>Docker 状态</strong><p>容器停止或不健康时提醒</p></div><el-switch v-model="notifications.docker" /></div><el-button @click="savePreferences">保存通知设置</el-button></section>
     <section class="settings-panel"><div class="settings-heading"><div class="settings-icon backup"><el-icon><Download /></el-icon></div><div><h2>备份恢复</h2><span>导出或导入服务配置 JSON</span></div></div><div class="backup-actions"><el-button type="primary" @click="exportBackup"><el-icon><Download /></el-icon>导出配置</el-button><el-button @click="chooseImport"><el-icon><Upload /></el-icon>导入配置</el-button><input ref="importInput" type="file" accept="application/json" hidden @change="importBackup" /></div><div class="settings-note"><el-icon><Warning /></el-icon>导入会按服务 ID 更新已有数据，请先保留一份当前备份。</div></section>
     <section class="settings-panel system-panel"><div class="settings-heading"><div class="settings-icon system"><el-icon><Monitor /></el-icon></div><div><h2>系统信息</h2><span>查看当前 API 和数据库运行状态</span></div><el-button class="system-refresh" text :loading="loadingSystem" title="刷新系统信息" @click="loadSystem"><el-icon><Refresh /></el-icon></el-button></div><div v-if="system" class="system-info-grid"><div><span>应用版本</span><strong>v{{ system.appVersion }}</strong></div><div><span>Node.js</span><strong>{{ system.nodeVersion }}</strong></div><div><span>运行时间</span><strong>{{ formatUptime(system.uptime) }}</strong></div><div><span>数据库</span><strong :class="system.database === 'connected' ? 'healthy' : 'unhealthy'"><el-icon><CircleCheck v-if="system.database === 'connected'" /><Warning v-else /></el-icon>{{ system.database === 'connected' ? '已连接' : '未连接' }}</strong></div><div><span>API 端口</span><strong>{{ system.apiPort }}</strong></div><div><span>运行平台</span><strong>{{ system.platform }}</strong></div></div><el-empty v-else description="暂无系统信息" :image-size="60" /></section>
+    <section class="settings-panel login-audit-panel"><div class="settings-heading"><div class="settings-icon audit"><el-icon><UserFilled /></el-icon></div><div><h2>登录日志</h2><span>最近 30 次登录结果和可信代理来源</span></div><el-button class="system-refresh" text :loading="loadingAudit" title="刷新登录日志" @click="loadLoginAudit"><el-icon><Refresh /></el-icon></el-button></div><div class="login-audit-scroll"><table class="login-audit-table"><thead><tr><th>结果</th><th>用户名</th><th>来源 IP</th><th>时间</th><th>失败原因</th><th>User-Agent</th></tr></thead><tbody><tr v-for="entry in loginAudit" :key="entry.id"><td><span class="audit-status" :class="entry.success ? 'success' : 'failure'"><el-icon><CircleCheck v-if="entry.success" /><Warning v-else /></el-icon>{{ entry.success ? '成功' : '失败' }}</span></td><td class="audit-username">{{ entry.username || '(空)' }}</td><td><span class="audit-ip" :title="auditIpTitle(entry)">{{ entry.ipAddress }}</span></td><td class="audit-time">{{ formatAuditTime(entry.createdAt) }}</td><td>{{ entry.success ? '-' : failureReasonText(entry.failureReason) }}</td><td><span class="audit-agent" :title="entry.userAgent || '-'">{{ entry.userAgent || '-' }}</span></td></tr><tr v-if="!loginAudit.length && !loadingAudit"><td colspan="6" class="audit-empty">暂无登录记录</td></tr></tbody></table></div></section>
   </div>
 </template>
 <style src="../styles/settings.css"></style>
