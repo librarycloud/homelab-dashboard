@@ -1,10 +1,11 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import Dashboard from './views/Dashboard.vue'
-import Services from './views/Services.vue'
-import Projects from './views/Projects.vue'
-import Login from './views/Login.vue'
 import { authApi } from './api'
-import Settings from './views/Settings.vue'
+
+const Dashboard = () => import('./views/Dashboard.vue')
+const Services = () => import('./views/Services.vue')
+const Projects = () => import('./views/Projects.vue')
+const Login = () => import('./views/Login.vue')
+const Settings = () => import('./views/Settings.vue')
 
 const router = createRouter({
   history: createWebHistory(),

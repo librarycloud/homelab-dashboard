@@ -1,9 +1,12 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { Download, Lock, Bell, Refresh, Upload, Monitor, CircleCheck, Warning, InfoFilled, Setting } from '@element-plus/icons-vue'
+import { Download, Lock, Bell, Refresh, Upload, Monitor, CircleCheck, Warning, InfoFilled, Setting, Brush } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import 'element-plus/es/components/message/style/css'
+import 'element-plus/es/components/message-box/style/css'
 import { authApi, serviceApi, systemApi } from '../api'
 import { readServiceCategories, writeServiceCategories } from '../serviceCategories'
+import { normalizePrimary, PRIMARY_PRESETS, readPrimaryColor, savePrimaryColor } from '../theme'
 
 const passwordForm = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' })
 const passwordLoading = ref(false)
@@ -15,8 +18,20 @@ const importInput = ref(null)
 const loadingSystem = ref(false)
 const categories = ref(readServiceCategories())
 const newCategory = ref('')
+const primaryColor = ref(readPrimaryColor())
+const primaryPresets = PRIMARY_PRESETS
 
 const sessionText = computed(() => '当前会话有效期 24 小时，凭据由服务端安全保存')
+function previewPrimaryColor(value) {
+  primaryColor.value = savePrimaryColor(normalizePrimary(value))
+}
+function selectPrimaryColor(value) {
+  primaryColor.value = savePrimaryColor(value)
+  ElMessage.success('主题色已更新')
+}
+function resetPrimaryColor() {
+  selectPrimaryColor('#42d3b2')
+}
 function savePreferences() {
   localStorage.setItem('homelab-checking', checking.value ? 'on' : 'off')
   localStorage.setItem('homelab-check-interval', checkInterval.value)
@@ -84,6 +99,7 @@ onMounted(loadSystem)
   <div class="page-head"><div><div class="eyebrow">WORKSPACE · SETTINGS</div><h1>系统设置</h1><p>管理账户安全、服务检查、通知、备份和系统运行信息。</p></div></div>
   <div class="settings-grid">
     <section class="settings-panel"><div class="settings-heading"><div class="settings-icon security"><el-icon><Lock /></el-icon></div><div><h2>账户安全</h2><span>修改管理员密码和查看会话状态</span></div></div><el-form label-position="top" class="settings-form"><el-form-item label="当前密码"><el-input v-model="passwordForm.currentPassword" type="password" show-password /></el-form-item><el-form-item label="新密码"><el-input v-model="passwordForm.newPassword" type="password" show-password /></el-form-item><el-form-item label="确认新密码"><el-input v-model="passwordForm.confirmPassword" type="password" show-password /></el-form-item><el-button type="primary" :loading="passwordLoading" @click="changePassword">更新密码</el-button></el-form><div class="settings-note"><el-icon><InfoFilled /></el-icon>{{ sessionText }}</div></section>
+    <section class="settings-panel"><div class="settings-heading"><div class="settings-icon theme"><el-icon><Brush /></el-icon></div><div><h2>主题外观</h2><span>自定义界面主色，选择后立即预览</span></div></div><div class="theme-color-control"><div class="theme-color-picker"><el-color-picker v-model="primaryColor" :predefine="primaryPresets" @change="previewPrimaryColor" /><div><strong>{{ (primaryColor || '#42d3b2').toUpperCase() }}</strong><p>支持 HEX 颜色值</p></div></div><el-button text @click="resetPrimaryColor">恢复默认</el-button></div><div class="theme-presets"><button v-for="color in primaryPresets" :key="color" class="theme-swatch" :class="{ selected: primaryColor === color }" :style="{ backgroundColor: color }" :title="`使用 ${color} 主题色`" @click="selectPrimaryColor(color)"><el-icon v-if="primaryColor === color"><CircleCheck /></el-icon></button></div></section>
     <section class="settings-panel"><div class="settings-heading"><div class="settings-icon service"><el-icon><Refresh /></el-icon></div><div><h2>服务检查</h2><span>控制版本和服务状态检查频率</span></div></div><div class="setting-row"><div><strong>启用自动检查</strong><p>在服务列表中定期刷新检查结果</p></div><el-switch v-model="checking" /></div><div class="setting-row"><div><strong>检查间隔</strong><p>页面打开时使用的刷新周期</p></div><el-select v-model="checkInterval" popper-class="homelab-select-popper" style="width: 130px"><el-option label="每 15 分钟" value="15" /><el-option label="每 30 分钟" value="30" /><el-option label="每 1 小时" value="60" /></el-select></div><el-button @click="savePreferences">保存检查设置</el-button></section>
     <section class="settings-panel"><div class="settings-heading"><div class="settings-icon service"><el-icon><Setting /></el-icon></div><div><h2>服务分类</h2><span>维护服务编辑时可选择的固定分类</span></div></div><div class="category-manager"><div class="category-add"><el-input v-model="newCategory" placeholder="输入分类名称" @keyup.enter="addCategory" /><el-button type="primary" @click="addCategory">添加</el-button></div><div class="category-list"><el-tag v-for="category in categories" :key="category" closable @close="removeCategory(category)">{{ category }}</el-tag></div></div></section>
     <section class="settings-panel"><div class="settings-heading"><div class="settings-icon notice"><el-icon><Bell /></el-icon></div><div><h2>通知设置</h2><span>选择需要关注的系统事件</span></div></div><div class="setting-row"><div><strong>异常服务</strong><p>服务离线或进入异常状态时提醒</p></div><el-switch v-model="notifications.error" /></div><div class="setting-row"><div><strong>版本更新</strong><p>检测到可用新版本时提醒</p></div><el-switch v-model="notifications.update" /></div><div class="setting-row"><div><strong>Docker 状态</strong><p>容器停止或不健康时提醒</p></div><el-switch v-model="notifications.docker" /></div><el-button @click="savePreferences">保存通知设置</el-button></section>
@@ -91,3 +107,4 @@ onMounted(loadSystem)
     <section class="settings-panel system-panel"><div class="settings-heading"><div class="settings-icon system"><el-icon><Monitor /></el-icon></div><div><h2>系统信息</h2><span>查看当前 API 和数据库运行状态</span></div><el-button class="system-refresh" text :loading="loadingSystem" title="刷新系统信息" @click="loadSystem"><el-icon><Refresh /></el-icon></el-button></div><div v-if="system" class="system-info-grid"><div><span>应用版本</span><strong>v{{ system.appVersion }}</strong></div><div><span>Node.js</span><strong>{{ system.nodeVersion }}</strong></div><div><span>运行时间</span><strong>{{ formatUptime(system.uptime) }}</strong></div><div><span>数据库</span><strong :class="system.database === 'connected' ? 'healthy' : 'unhealthy'"><el-icon><CircleCheck v-if="system.database === 'connected'" /><Warning v-else /></el-icon>{{ system.database === 'connected' ? '已连接' : '未连接' }}</strong></div><div><span>API 端口</span><strong>{{ system.apiPort }}</strong></div><div><span>运行平台</span><strong>{{ system.platform }}</strong></div></div><el-empty v-else description="暂无系统信息" :image-size="60" /></section>
   </div>
 </template>
+<style src="../styles/settings.css"></style>

@@ -7,3 +7,4 @@
     <article class="project-row"><div class="project-avatar">D</div><div class="project-info"><h3>基础设施</h3><p>主节点、容器和网络资源</p><div class="project-tags"><span>Docker</span><span>MariaDB</span><span>运行中</span></div></div></article>
   </section>
 </template>
+<style src="../styles/projects.css"></style>

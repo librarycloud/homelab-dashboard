@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { Lock, User, ArrowRight } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import 'element-plus/es/components/message/style/css'
 import { useRoute, useRouter } from 'vue-router'
 import { authApi } from '../api'
 
@@ -44,3 +45,4 @@ async function submit() {
     </div>
   </div>
 </template>
+<style src="../styles/login.css"></style>

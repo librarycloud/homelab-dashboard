@@ -1,0 +1,10 @@
+.login-page{min-height:100vh;background:#0b1016;display:grid;place-items:center;position:relative;overflow:hidden}
+.login-page:before{content:'';position:absolute;inset:0;background-image:linear-gradient(#1c2d3814 1px,transparent 1px),linear-gradient(90deg,#1c2d3814 1px,transparent 1px);background-size:45px 45px}
+.login-box{position:relative;width:390px;background:#111a23;border:1px solid #263544;border-radius:10px;padding:38px;box-shadow:0 25px 80px #0007}
+.login-brand{padding:0 0 33px}
+.login-box h1{font-size:25px;margin:0 0 7px}
+.login-box>p{margin:0 0 28px;color:#778799;font-size:12px}
+.login-box .el-input__wrapper{background:#0d151d;box-shadow:0 0 0 1px #293846 inset}
+.login-btn{width:100%;margin-top:5px}
+.login-note{display:block;text-align:center;color:#56677a;font:10px 'DM Mono';margin-top:22px}
+.login-page{min-height:100svh;place-items:center;padding:24px}.login-box{margin:0;transform:translateY(-12vh)}.login-box .login-brand{padding-bottom:24px}

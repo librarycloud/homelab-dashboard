@@ -57,6 +57,8 @@ import {
   Upload,
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
+import "element-plus/es/components/message/style/css";
+import "element-plus/es/components/message-box/style/css";
 import { useRoute, useRouter } from "vue-router";
 import { serviceApi } from "../api";
 import { readServiceCategories } from "../serviceCategories";
@@ -559,3 +561,4 @@ watch(() => route.query.edit, openEditFromRoute);
     ></el-dialog
   >
 </template>
+<style src="../styles/services.css"></style>

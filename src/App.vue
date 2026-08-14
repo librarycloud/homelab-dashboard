@@ -3,7 +3,9 @@ import { computed, ref, watch } from 'vue'
 import { Bell, Close, Folder, Grid, House, Moon, Search, Setting, Sunny, WarningFilled } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import 'element-plus/es/components/message/style/css'
 import { authApi, serviceApi } from './api'
+import { applyPrimaryColor, readPrimaryColor } from './theme'
 
 const route = useRoute()
 const router = useRouter()
@@ -51,6 +53,7 @@ watch(dark, (value) => {
   localStorage.setItem('homelab-theme', value ? 'dark' : 'light')
   document.documentElement.classList.toggle('homelab-light', !value)
 }, { immediate: true })
+applyPrimaryColor(readPrimaryColor())
 loadNotices()
 watch(() => route.path, (path) => {
   if (path !== '/login') loadNotices()

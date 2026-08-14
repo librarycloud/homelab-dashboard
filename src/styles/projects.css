@@ -1,0 +1,7 @@
+.project-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.project-row{background:#111a23;border:1px solid #202d3a;border-radius:8px;padding:17px;display:flex;align-items:center;gap:13px}
+.project-info{flex:1;min-width:0}
+.project-info h3{margin:0;font-size:14px}
+.project-info p{margin:5px 0 10px;color:#748395;font-size:11px}
+.project-tags{display:flex;gap:9px;align-items:center;color:#778697;font:10px 'DM Mono'}
+.project-actions{display:flex;gap:3px}

@@ -1,0 +1,24 @@
+.search-box,.table-search{height:36px;border:1px solid #273442;background:#121b25;border-radius:6px;display:flex;align-items:center;padding:0 11px;gap:8px;color:#68788b}
+.search-box input,.table-search input{background:none;border:0;outline:0;color:#d8e2ec;width:165px;font:12px Manrope}
+.stat-card,.panel,.table-panel{background:#111a23;border:1px solid #202d3a;border-radius:8px}
+.service-links button,.entry-links button{border:1px solid #2a3946;background:#151f29;color:#a6b5c3;border-radius:4px;padding:7px 8px;font-size:10px;cursor:pointer;display:flex;gap:5px;align-items:center}
+.service-links button:hover,.entry-links button:hover{color:#64dcc2;border-color:#3b766b}
+.table-panel{padding:16px 20px}
+.table-toolbar{display:flex;gap:12px;align-items:center;margin-bottom:15px}
+.table-search{width:270px}
+.table-count{margin-left:auto;color:#6d7c8d;font-size:11px}
+.service-table{--el-table-bg-color:#111a23;--el-table-tr-bg-color:#111a23;--el-table-header-bg-color:#151f29;--el-table-border-color:#263440;--el-table-text-color:#b9c6d3;--el-table-header-text-color:#738296}
+.service-table::before{display:none}
+.project-cell,.docker-cell,.entry-links{display:flex;align-items:center;gap:9px}
+.project-cell span{display:block;color:#718095;font-size:10px;margin-top:3px}
+.version-cell{font:11px 'DM Mono';color:#dce5ed}
+.version-cell b{color:#eca75f;font-weight:400}
+.entry-links button{padding:5px 6px}
+.entry-links svg,.docker-cell svg{width:12px}
+.docker-cell{font-size:11px;color:#8f9cad}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.sort-actions{display:flex;align-items:center;gap:3px}.sort-actions .el-button{margin:0!important}.sort-order-input{width:100%}
+.card-menu{border:0;background:transparent;padding:2px;color:#667587;cursor:pointer;display:grid;place-items:center}.card-menu:hover{color:#55d9b9}.service-action-menu{background:#111a23!important;border:1px solid #2a3947!important}.service-action-menu .el-dropdown-menu__item{color:#b9c6d3!important}.service-action-menu .el-dropdown-menu__item:not(.is-disabled):hover{background:#1d2a35!important;color:#e7edf5!important}.service-action-menu .el-dropdown-menu__item--divided:before{background:#2a3947!important}.app-shell.light .card-menu{color:#758594}.app-shell.light .card-menu:hover{color:#16836d}.homelab-light .service-action-menu{background:#fff!important;border-color:#d6e0e7!important}.homelab-light .service-action-menu .el-dropdown-menu__item{color:#526573!important}.homelab-light .service-action-menu .el-dropdown-menu__item:not(.is-disabled):hover{background:#eef5f3!important;color:#245e53!important}.homelab-light .service-action-menu .el-dropdown-menu__item--divided:before{background:#dfe6ec!important}
+.icon-picker{display:grid;grid-template-columns:repeat(17,minmax(0,1fr));gap:7px;width:100%}.icon-choice{width:100%;height:35px;display:grid;place-items:center;border:1px solid #2a3946;border-radius:6px;background:#151f29;color:#9babb9;cursor:pointer;font-size:17px}.icon-choice:hover{color:#65e0c4;border-color:#3b766b}.icon-choice.selected{background:#183a39;border-color:#42bda4;color:#65e0c4}.app-shell.light .icon-choice{background:#f7f9fa;border-color:#d6e0e6;color:#607381}.app-shell.light .icon-choice.selected{background:#e2f4ef;border-color:#7cc9b8;color:#16836d}
+.icon-picker-field{grid-column:1 / -1}
+@media(max-width:720px){.icon-picker{grid-template-columns:repeat(8,minmax(0,1fr));gap:6px}}
