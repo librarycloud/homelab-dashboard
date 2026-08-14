@@ -331,7 +331,6 @@ watch(() => route.query.edit, openEditFromRoute);
 <template>
   <div class="page-head services-page-head">
     <div>
-      <div class="eyebrow">WORKSPACE · SERVICES</div>
       <h1>我的服务</h1>
       <p>集中管理 HomeLab 服务、访问地址和版本信息。</p>
     </div>

@@ -1,6 +1,6 @@
 <template>
   <div class="page-head">
-    <div><div class="eyebrow">WORKSPACE · PROJECTS</div><h1>项目管理</h1><p>管理 HomeLab 中的部署项目和相关资源。</p></div>
+    <div><h1>项目管理</h1><p>管理 HomeLab 中的部署项目和相关资源。</p></div>
   </div>
   <section class="project-grid">
     <article class="project-row"><div class="project-avatar">H</div><div class="project-info"><h3>HomeLab Dashboard</h3><p>家庭实验室服务控制中心</p><div class="project-tags"><span>Vue 3</span><span>Node.js</span><span>运行中</span></div></div></article>
