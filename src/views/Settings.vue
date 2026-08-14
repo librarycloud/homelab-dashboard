@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { Download, Lock, Bell, Refresh, Upload, Monitor, CircleCheck, Warning, InfoFilled, Setting, Brush, UserFilled } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import 'element-plus/es/components/message/style/css'
@@ -8,6 +9,7 @@ import { authApi, serviceApi, settingsApi, systemApi } from '../api'
 import { applySettings, DEFAULT_SETTINGS, normalizeSettings } from '../appSettings'
 import { applyPrimaryColor, normalizePrimary, PRIMARY_PRESETS } from '../theme'
 
+const router = useRouter()
 const passwordForm = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' })
 const passwordLoading = ref(false)
 const checking = ref(DEFAULT_SETTINGS.checking)
@@ -67,6 +69,9 @@ async function savePreferences() {
 async function saveSessionLifetime() {
   if (!Number.isInteger(sessionTtlHours.value) || sessionTtlHours.value < 1 || sessionTtlHours.value > 720) return ElMessage.warning('请输入 1 到 720 之间的整数小时数')
   try { await persistSettings({ sessionTtlHours: sessionTtlHours.value }, '会话有效期已保存，新登录后生效') } catch (error) { ElMessage.error(error.message) }
+}
+async function logout() {
+  try { await authApi.logout(); ElMessage.success('已退出登录'); router.replace('/login') } catch (error) { ElMessage.error(error.message) }
 }
 async function addCategory() {
   const value = newCategory.value.trim()
@@ -148,7 +153,7 @@ onMounted(() => { void Promise.all([loadSettings(), loadSystem(), loadLoginAudit
     <section class="settings-panel"><div class="settings-heading"><div class="settings-icon backup"><el-icon><Download /></el-icon></div><div><h2>备份恢复</h2><span>导出或导入服务配置 JSON</span></div></div><div class="backup-actions"><el-button type="primary" @click="exportBackup"><el-icon><Download /></el-icon>导出配置</el-button><el-button @click="chooseImport"><el-icon><Upload /></el-icon>导入配置</el-button><input ref="importInput" type="file" accept="application/json" hidden @change="importBackup" /></div><div class="settings-note"><el-icon><Warning /></el-icon>导入会按服务 ID 更新已有数据，请先保留一份当前备份。</div></section>
     <section class="settings-panel system-panel"><div class="settings-heading"><div class="settings-icon system"><el-icon><Monitor /></el-icon></div><div><h2>系统信息</h2><span>查看当前 API 和数据库运行状态</span></div><el-button class="system-refresh" text :loading="loadingSystem" title="刷新系统信息" @click="loadSystem"><el-icon><Refresh /></el-icon></el-button></div><div v-if="system" class="system-info-grid"><div><span>应用版本</span><strong>v{{ system.appVersion }}</strong></div><div><span>Node.js</span><strong>{{ system.nodeVersion }}</strong></div><div><span>运行时间</span><strong>{{ formatUptime(system.uptime) }}</strong></div><div><span>数据库</span><strong :class="system.database === 'connected' ? 'healthy' : 'unhealthy'"><el-icon><CircleCheck v-if="system.database === 'connected'" /><Warning v-else /></el-icon>{{ system.database === 'connected' ? '已连接' : '未连接' }}</strong></div><div><span>API 端口</span><strong>{{ system.apiPort }}</strong></div><div><span>运行平台</span><strong>{{ system.platform }}</strong></div></div><el-empty v-else description="暂无系统信息" :image-size="60" /></section>
     <section class="settings-panel login-audit-panel"><div class="settings-heading"><div class="settings-icon audit"><el-icon><UserFilled /></el-icon></div><div><h2>登录日志</h2><span>最近 10 次登录结果和可信代理来源</span></div><el-button class="system-refresh" text :loading="loadingAudit" title="刷新登录日志" @click="loadLoginAudit"><el-icon><Refresh /></el-icon></el-button></div><div class="login-audit-scroll"><table class="login-audit-table"><thead><tr><th>结果</th><th>用户名</th><th>来源 IP</th><th>时间</th><th>失败原因</th><th>User-Agent</th></tr></thead><tbody><tr v-for="entry in loginAudit" :key="entry.id"><td><span class="audit-status" :class="entry.success ? 'success' : 'failure'"><el-icon><CircleCheck v-if="entry.success" /><Warning v-else /></el-icon>{{ entry.success ? '成功' : '失败' }}</span></td><td class="audit-username">{{ entry.username || '(空)' }}</td><td><span class="audit-ip" :title="auditIpTitle(entry)">{{ entry.ipAddress }}</span></td><td class="audit-time">{{ formatAuditTime(entry.createdAt) }}</td><td>{{ entry.success ? '-' : failureReasonText(entry.failureReason) }}</td><td><el-tooltip :content="entry.userAgent || '-'" effect="light" placement="top" popper-class="audit-agent-tooltip" :show-after="0" append-to="body"><span class="audit-agent" :title="entry.userAgent || '-'" tabindex="0">{{ entry.userAgent || '-' }}</span></el-tooltip></td></tr><tr v-if="!loginAudit.length && !loadingAudit"><td colspan="6" class="audit-empty">暂无登录记录</td></tr></tbody></table></div></section>
-    <section class="settings-panel session-panel"><div class="settings-heading"><div class="settings-icon security"><el-icon><Lock /></el-icon></div><div><h2>会话有效期</h2><span>设置新登录会话和 Cookie 的有效时间</span></div></div><div class="setting-row session-setting-row"><div><strong>有效期</strong><p>可设置 1 到 720 小时，修改后从下一次登录开始生效</p></div><el-input-number v-model="sessionTtlHours" :min="1" :max="720" :step="1" :precision="0" controls-position="right" aria-label="会话有效期（小时）" /></div><el-button type="primary" @click="saveSessionLifetime">保存会话设置</el-button></section>
+    <section class="settings-panel session-panel"><div class="settings-heading"><div class="settings-icon security"><el-icon><Lock /></el-icon></div><div><h2>会话有效期</h2><span>设置新登录会话和 Cookie 的有效时间</span></div></div><div class="setting-row session-setting-row"><div><strong>有效期</strong><p>可设置 1 到 720 小时，修改后从下一次登录开始生效</p></div><el-input-number v-model="sessionTtlHours" :min="1" :max="720" :step="1" :precision="0" controls-position="right" aria-label="会话有效期（小时）" /></div><div class="backup-actions"><el-button type="primary" @click="saveSessionLifetime">保存会话设置</el-button><el-button type="danger" plain @click="logout">退出登录</el-button></div></section>
   </div>
 </template>
 <style src="../styles/settings.css"></style>

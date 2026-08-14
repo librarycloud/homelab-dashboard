@@ -1,10 +1,8 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { Bell, Close, Folder, Grid, House, Moon, Setting, Sunny, SwitchButton, WarningFilled } from '@element-plus/icons-vue'
+import { Bell, Close, Folder, Grid, House, Moon, Setting, Sunny, WarningFilled } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import 'element-plus/es/components/message/style/css'
-import { authApi, serviceApi, settingsApi } from './api'
+import { serviceApi, settingsApi } from './api'
 import { applySettings, DEFAULT_SETTINGS, normalizeSettings } from './appSettings'
 
 const route = useRoute()
@@ -34,7 +32,6 @@ function go(path) { router.push(path) }
 async function loadNotices() {
   try { services.value = await serviceApi.list() } catch { services.value = [] }
 }
-function openNotices() { noticeOpen.value = !noticeOpen.value }
 function syncSettings(event) {
   const settings = normalizeSettings(event.detail || {})
   siteName.value = settings.siteName
@@ -45,11 +42,6 @@ function syncSettings(event) {
 function persistDismissedNotices() { localStorage.setItem('homelab-dismissed-notices', JSON.stringify([...dismissedNotices.value])) }
 function dismissNotice(notice) { dismissedNotices.value = new Set([...dismissedNotices.value, notice.key]); persistDismissedNotices() }
 function clearNotices() { dismissedNotices.value = new Set([...dismissedNotices.value, ...notices.value.map((notice) => notice.key)]); persistDismissedNotices(); noticeOpen.value = false }
-async function logout() {
-  await authApi.logout()
-  ElMessage.success('已退出登录')
-  router.replace('/login')
-}
 watch(dark, (value) => {
   localStorage.setItem('homelab-theme', value ? 'dark' : 'light')
   document.documentElement.classList.toggle('homelab-light', !value)
@@ -72,9 +64,8 @@ watch(() => route.path, (path) => {
   <div v-else class="app-shell" :class="{ light: !dark }">
     <aside class="sidebar">
       <div class="brand"><div class="brand-mark">H</div><div><strong>{{ siteName }}</strong><span>{{ siteSubtitle }}</span></div></div>
-      <div class="workspace-label">工作区</div>
       <nav><button v-for="item in nav" :key="item.path" class="nav-item" :class="{ active: route.path === item.path }" @click="go(item.path)"><el-icon><component :is="item.icon" /></el-icon><span>{{ item.label }}</span></button></nav>
-      <div class="sidebar-bottom"><button class="nav-item" :class="{ active: route.path === '/settings' }" @click="go('/settings')"><el-icon><Setting /></el-icon><span>系统设置</span></button><div class="system-state"><i></i><span>系统运行正常</span><small>v0.1.0</small></div><div class="sidebar-tools"><div class="notice-wrap"><button class="sidebar-tool" :class="{ active: noticeOpen }" title="通知" @click="openNotices"><el-icon><Bell /></el-icon><span>通知</span><small v-if="notices.length" class="sidebar-notice-count">{{ notices.length }}</small></button><div v-if="noticeOpen" class="notice-panel"><div class="notice-head"><strong>通知</strong><div><span>{{ notices.length }} 条</span><button v-if="notices.length" class="notice-clear" title="清除全部通知" @click.stop="clearNotices">清除</button></div></div><div v-if="!notices.length" class="notice-empty"><el-icon><Bell /></el-icon><span>暂无需要处理的通知</span></div><div v-for="notice in notices" :key="notice.key" class="notice-item"><span class="notice-icon" :class="notice.type"><el-icon><component :is="notice.icon" /></el-icon></span><span><strong>{{ notice.title }}</strong><small>{{ notice.text }}</small></span><button class="notice-dismiss" title="清除通知" @click.stop="dismissNotice(notice)"><el-icon><Close /></el-icon></button></div></div></div><button class="sidebar-tool" :title="dark ? '切换浅色主题' : '切换深色主题'" @click="dark = !dark"><el-icon><Sunny v-if="dark" /><Moon v-else /></el-icon><span>{{ dark ? '深色主题' : '浅色主题' }}</span></button><button class="sidebar-tool sidebar-logout" title="退出登录" @click="logout"><el-icon><SwitchButton /></el-icon><span>退出登录</span></button></div></div>
+      <div class="sidebar-bottom"><div class="sidebar-tools"><el-popover v-model:visible="noticeOpen" placement="right-end" trigger="click" popper-class="notice-popper" :show-arrow="false" :width="300"><template #reference><button class="sidebar-tool" :class="{ active: noticeOpen }" title="通知"><el-icon><Bell /></el-icon><span>通知</span><small v-if="notices.length" class="sidebar-notice-count">{{ notices.length }}</small></button></template><div class="notice-panel"><div class="notice-head"><strong>通知</strong><div><span>{{ notices.length }} 条</span><button v-if="notices.length" class="notice-clear" title="清除全部通知" @click.stop="clearNotices">清除</button></div></div><div v-if="!notices.length" class="notice-empty"><el-icon><Bell /></el-icon><span>暂无需要处理的通知</span></div><div v-for="notice in notices" :key="notice.key" class="notice-item"><span class="notice-icon" :class="notice.type"><el-icon><component :is="notice.icon" /></el-icon></span><span><strong>{{ notice.title }}</strong><small>{{ notice.text }}</small></span><button class="notice-dismiss" title="清除通知" @click.stop="dismissNotice(notice)"><el-icon><Close /></el-icon></button></div></div></el-popover><button class="sidebar-icon-tool" :title="dark ? '切换浅色主题' : '切换深色主题'" @click="dark = !dark"><el-icon><Sunny v-if="dark" /><Moon v-else /></el-icon></button></div><button class="nav-item" :class="{ active: route.path === '/settings' }" @click="go('/settings')"><el-icon><Setting /></el-icon><span>系统设置</span></button></div>
     </aside>
     <main class="main-area">
       <div class="mobile-tabs"><button v-for="item in nav" :key="item.path" :class="{ active: route.path === item.path }" @click="go(item.path)"><el-icon><component :is="item.icon" /></el-icon>{{ item.label }}</button><button :class="{ active: route.path === '/settings' }" @click="go('/settings')"><el-icon><Setting /></el-icon>设置</button></div>
