@@ -1,4 +1,6 @@
 .notice-head>div{display:flex;align-items:center;gap:10px}.notice-clear,.notice-dismiss{border:0;background:none;color:#728395;cursor:pointer}.notice-clear{font-size:10px;padding:2px 0}.notice-clear:hover,.notice-dismiss:hover{color:#55d9b9}.notice-item>span:nth-child(2){min-width:0;flex:1}
+.search-box{height:36px;border:1px solid #273442;background:#121b25;border-radius:6px;display:flex;align-items:center;padding:0 11px;gap:8px;color:#68788b}
+.search-box input{min-width:0;width:165px;background:none;border:0;outline:0;color:#d8e2ec;font:12px Manrope,system-ui,sans-serif}
 /* Light theme overrides */
 .app-shell.light{background:#f4f7f9;color:#1f2933}
 .app-shell.light .sidebar{background:#ffffff;border-color:#dfe6ec}

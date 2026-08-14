@@ -1,6 +1,6 @@
-.search-box,.table-search{height:36px;border:1px solid #273442;background:#121b25;border-radius:6px;display:flex;align-items:center;padding:0 11px;gap:8px;color:#68788b}
-.search-box input,.table-search input{background:none;border:0;outline:0;color:#d8e2ec;width:165px;font:12px Manrope}
-.stat-card,.panel,.table-panel{background:#111a23;border:1px solid #202d3a;border-radius:8px}
+.table-search{height:36px;border:1px solid #273442;background:#121b25;border-radius:6px;display:flex;align-items:center;padding:0 11px;gap:8px;color:#68788b}
+.table-search input{background:none;border:0;outline:0;color:#d8e2ec;width:165px;font:12px Manrope}
+.table-panel{background:#111a23;border:1px solid #202d3a;border-radius:8px}
 .entry-links button{border:1px solid #2a3946;background:#151f29;color:#a6b5c3;border-radius:4px;padding:7px 8px;font-size:10px;cursor:pointer;display:flex;gap:5px;align-items:center}
 .entry-links button:hover{color:#64dcc2;border-color:#3b766b}
 .table-panel{padding:16px 20px}

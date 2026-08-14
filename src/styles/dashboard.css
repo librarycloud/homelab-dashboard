@@ -1,4 +1,5 @@
 .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:40px}
+.stat-card,.panel{background:#111a23;border:1px solid #202d3a;border-radius:8px}
 .stat-top{display:flex;justify-content:space-between;align-items:center;color:#7c8b9b;font-size:12px}
 .stat-icon{height:31px;width:31px;border-radius:6px;display:grid;place-items:center}
 .stat-icon.cyan{color:#56d9c0;background:#173b3b}
