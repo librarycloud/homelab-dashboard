@@ -11,7 +11,6 @@ import { checkVersion, refreshServiceStatus } from './serviceChecks.js'
 const app = express()
 const port = process.env.API_PORT || 3000
 const defaultSessionTtlHours = 24
-const sessionTtlOptions = [1, 8, 24, 168, 720]
 const sessions = new Map()
 let adminPassword = process.env.ADMIN_PASSWORD
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -107,7 +106,7 @@ function normalizeSettings(value = {}) {
     primaryColor: normalizePrimaryColor(value.primaryColor),
     checking: typeof value.checking === 'boolean' ? value.checking : defaultSettings.checking,
     checkInterval: ['15', '30', '60'].includes(String(value.checkInterval)) ? String(value.checkInterval) : defaultSettings.checkInterval,
-    sessionTtlHours: sessionTtlOptions.includes(Number(value.sessionTtlHours)) ? Number(value.sessionTtlHours) : defaultSettings.sessionTtlHours,
+    sessionTtlHours: Number.isInteger(Number(value.sessionTtlHours)) && Number(value.sessionTtlHours) >= 1 && Number(value.sessionTtlHours) <= 720 ? Number(value.sessionTtlHours) : defaultSettings.sessionTtlHours,
     notifications: {
       error: typeof notifications.error === 'boolean' ? notifications.error : defaultSettings.notifications.error,
       update: typeof notifications.update === 'boolean' ? notifications.update : defaultSettings.notifications.update,

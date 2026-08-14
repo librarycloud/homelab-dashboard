@@ -23,7 +23,7 @@ export function normalizeSettings(value = {}) {
     primaryColor: normalizePrimary(value.primaryColor),
     checking: typeof value.checking === 'boolean' ? value.checking : DEFAULT_SETTINGS.checking,
     checkInterval: ['15', '30', '60'].includes(String(value.checkInterval)) ? String(value.checkInterval) : DEFAULT_SETTINGS.checkInterval,
-    sessionTtlHours: [1, 8, 24, 168, 720].includes(Number(value.sessionTtlHours)) ? Number(value.sessionTtlHours) : DEFAULT_SETTINGS.sessionTtlHours,
+    sessionTtlHours: Number.isInteger(Number(value.sessionTtlHours)) && Number(value.sessionTtlHours) >= 1 && Number(value.sessionTtlHours) <= 720 ? Number(value.sessionTtlHours) : DEFAULT_SETTINGS.sessionTtlHours,
     notifications: {
       error: typeof notifications.error === 'boolean' ? notifications.error : DEFAULT_SETTINGS.notifications.error,
       update: typeof notifications.update === 'boolean' ? notifications.update : DEFAULT_SETTINGS.notifications.update,
