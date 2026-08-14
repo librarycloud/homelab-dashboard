@@ -10,7 +10,8 @@ import { checkVersion, refreshServiceStatus } from './serviceChecks.js'
 
 const app = express()
 const port = process.env.API_PORT || 3000
-const sessionTtl = 24 * 60 * 60 * 1000
+const defaultSessionTtlHours = 24
+const sessionTtlOptions = [1, 8, 24, 168, 720]
 const sessions = new Map()
 let adminPassword = process.env.ADMIN_PASSWORD
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -35,7 +36,7 @@ function parseCookies(header = '') {
     .filter(([key, value]) => key && value).map(([key, ...value]) => [key, decodeURIComponent(value.join('='))]))
 }
 
-function setSessionCookie(res, token, maxAge = sessionTtl) {
+function setSessionCookie(res, token, maxAge = defaultSessionTtlHours * 60 * 60 * 1000) {
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : ''
   res.setHeader('Set-Cookie', `homelab_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(maxAge / 1000)}${secure}`)
 }
@@ -67,13 +68,14 @@ const numericFields = {
   version_status: [0, 1, 2, 3],
   docker_status: [0, 1, 2, 3, 4]
 }
-const settingKeys = ['site_name', 'site_subtitle', 'primary_color', 'checking_enabled', 'check_interval', 'notifications', 'service_categories']
+const settingKeys = ['site_name', 'site_subtitle', 'primary_color', 'checking_enabled', 'check_interval', 'session_ttl_hours', 'notifications', 'service_categories']
 const defaultSettings = Object.freeze({
   siteName: 'HomeLab',
   siteSubtitle: 'CONTROL CENTER',
   primaryColor: '#42d3b2',
   checking: true,
   checkInterval: '30',
+  sessionTtlHours: defaultSessionTtlHours,
   notifications: { error: true, update: true, docker: false },
   categories: ['监控', '存储', '媒体', '开发', '网络', '安全']
 })
@@ -105,6 +107,7 @@ function normalizeSettings(value = {}) {
     primaryColor: normalizePrimaryColor(value.primaryColor),
     checking: typeof value.checking === 'boolean' ? value.checking : defaultSettings.checking,
     checkInterval: ['15', '30', '60'].includes(String(value.checkInterval)) ? String(value.checkInterval) : defaultSettings.checkInterval,
+    sessionTtlHours: sessionTtlOptions.includes(Number(value.sessionTtlHours)) ? Number(value.sessionTtlHours) : defaultSettings.sessionTtlHours,
     notifications: {
       error: typeof notifications.error === 'boolean' ? notifications.error : defaultSettings.notifications.error,
       update: typeof notifications.update === 'boolean' ? notifications.update : defaultSettings.notifications.update,
@@ -127,6 +130,7 @@ async function readSettings() {
     primaryColor: values.primary_color,
     checking: values.checking_enabled,
     checkInterval: values.check_interval,
+    sessionTtlHours: values.session_ttl_hours,
     notifications: values.notifications,
     categories: values.service_categories
   })
@@ -140,6 +144,7 @@ function settingsPayload(body, current) {
   if (body.primaryColor !== undefined) next.primaryColor = body.primaryColor
   if (body.checking !== undefined) next.checking = body.checking
   if (body.checkInterval !== undefined) next.checkInterval = body.checkInterval
+  if (body.sessionTtlHours !== undefined) next.sessionTtlHours = body.sessionTtlHours
   if (body.notifications !== undefined) next.notifications = { ...current.notifications, ...body.notifications }
   if (body.categories !== undefined) next.categories = body.categories
   return normalizeSettings(next)
@@ -152,6 +157,7 @@ async function writeSettings(settings) {
     ['primary_color', settings.primaryColor],
     ['checking_enabled', settings.checking],
     ['check_interval', settings.checkInterval],
+    ['session_ttl_hours', settings.sessionTtlHours],
     ['notifications', settings.notifications],
     ['service_categories', settings.categories]
   ]
@@ -268,7 +274,7 @@ const passwordChangeLimiter = rateLimit({
   message: { message: '密码修改请求过于频繁，请稍后再试' }
 })
 
-app.post('/api/auth/login', loginLimiter, (req, res) => {
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
   const username = typeof req.body?.username === 'string' ? req.body.username.trim() : ''
   if (!process.env.ADMIN_USERNAME || !adminPassword) {
     void recordLoginAttempt(req, { username, success: false, failureReason: 'auth_not_configured' })
@@ -280,8 +286,15 @@ app.post('/api/auth/login', loginLimiter, (req, res) => {
     return res.status(401).json({ message: '用户名或密码错误' })
   }
   const token = crypto.randomBytes(32).toString('hex')
+  let sessionTtlHours = defaultSessionTtlHours
+  try {
+    sessionTtlHours = (await readSettings()).sessionTtlHours
+  } catch (error) {
+    if (error.code !== 'ER_NO_SUCH_TABLE') console.error('Unable to read session settings:', error.message)
+  }
+  const sessionTtl = sessionTtlHours * 60 * 60 * 1000
   sessions.set(token, { username, expiresAt: Date.now() + sessionTtl })
-  setSessionCookie(res, token)
+  setSessionCookie(res, token, sessionTtl)
   void recordLoginAttempt(req, { username, success: true })
   res.json({ ok: true, user: { username } })
 })
@@ -349,7 +362,7 @@ app.get('/api/system/info', requireAuth, async (_req, res) => {
 
 app.get('/api/system/login-audit', requireAuth, async (req, res) => {
   const requestedLimit = Number(req.query.limit)
-  const limit = Number.isInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 30
+  const limit = Number.isInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 10) : 10
   try {
     const rows = await query(`SELECT id, username, success,
       failure_reason AS failureReason,

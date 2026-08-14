@@ -60,3 +60,10 @@ html:not(.homelab-light) .app-shell:not(.light) .settings-panel .el-tag{--el-tag
 .homelab-light .app-shell.light .overview-link,.homelab-light .app-shell.light .overview-link:hover{color:var(--homelab-primary)}
 .app-shell:not(.light) .service-links button:hover,.app-shell:not(.light) .frp-info-button:hover{color:var(--homelab-primary);border-color:var(--homelab-primary)}
 .homelab-light .app-shell.light .service-links button:hover,.homelab-light .app-shell.light .frp-info-button:hover{background:var(--homelab-primary-soft);color:var(--homelab-primary);border-color:var(--homelab-primary)}
+.app-shell:not(.light) .avatar{background:var(--homelab-primary-dark-soft);color:var(--homelab-primary)}
+html:not(.homelab-light) .service-action-menu{background:#111a23!important;border-color:var(--homelab-primary-dark-soft)!important}
+html:not(.homelab-light) .service-action-menu .el-dropdown-menu__item{background:#111a23!important;color:#d8e2ec!important}
+html:not(.homelab-light) .service-action-menu .el-dropdown-menu__item:not(.is-disabled):hover,html:not(.homelab-light) .service-action-menu .el-dropdown-menu__item:not(.is-disabled):focus{background:var(--homelab-primary-dark-soft)!important;color:var(--homelab-primary)!important}
+html.homelab-light .service-action-menu{background:#fff!important;border-color:#d6e0e7!important}
+html.homelab-light .service-action-menu .el-dropdown-menu__item{background:#fff!important;color:#526573!important}
+html.homelab-light .service-action-menu .el-dropdown-menu__item:not(.is-disabled):hover,html.homelab-light .service-action-menu .el-dropdown-menu__item:not(.is-disabled):focus{background:var(--homelab-primary-soft)!important;color:var(--homelab-primary-dark-soft)!important}

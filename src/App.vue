@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { Bell, Close, Folder, Grid, House, Moon, Search, Setting, Sunny, WarningFilled } from '@element-plus/icons-vue'
+import { ArrowDown, Bell, Close, Folder, Grid, House, Moon, Search, Setting, Sunny, WarningFilled } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import 'element-plus/es/components/message/style/css'
@@ -53,6 +53,10 @@ async function logout() {
   ElMessage.success('已退出登录')
   router.replace('/login')
 }
+function handleUserCommand(command) {
+  if (command === 'settings') go('/settings')
+  if (command === 'logout') void logout()
+}
 watch(dark, (value) => {
   localStorage.setItem('homelab-theme', value ? 'dark' : 'light')
   document.documentElement.classList.toggle('homelab-light', !value)
@@ -80,7 +84,7 @@ watch(() => route.path, (path) => {
       <div class="sidebar-bottom"><button class="nav-item" :class="{ active: route.path === '/settings' }" @click="go('/settings')"><el-icon><Setting /></el-icon><span>系统设置</span></button><div class="system-state"><i></i><span>系统运行正常</span><small>v0.1.0</small></div></div>
     </aside>
     <main class="main-area">
-      <header class="topbar"><div class="mobile-brand"><div class="brand-mark">H</div><strong>{{ siteName }}</strong></div><div class="crumb"><span>{{ siteName }}</span><b>/</b><strong>{{ pageTitle }}</strong></div><div class="top-actions"><div class="search-box"><el-icon><Search /></el-icon><input v-model="search" placeholder="搜索服务..." /><kbd>⌘ K</kbd></div><div class="notice-wrap"><button class="icon-btn" :class="{ active: noticeOpen }" title="通知" @click="openNotices"><el-icon><Bell /></el-icon><i v-if="notices.length" class="notice-dot"></i></button><div v-if="noticeOpen" class="notice-panel"><div class="notice-head"><strong>通知</strong><div><span>{{ notices.length }} 条</span><button v-if="notices.length" class="notice-clear" title="清除全部通知" @click.stop="clearNotices">清除</button></div></div><div v-if="!notices.length" class="notice-empty"><el-icon><Bell /></el-icon><span>暂无需要处理的通知</span></div><div v-for="notice in notices" :key="notice.key" class="notice-item"><span class="notice-icon" :class="notice.type"><el-icon><component :is="notice.icon" /></el-icon></span><span><strong>{{ notice.title }}</strong><small>{{ notice.text }}</small></span><button class="notice-dismiss" title="清除通知" @click.stop="dismissNotice(notice)"><el-icon><Close /></el-icon></button></div></div></div><button class="icon-btn theme-toggle" :title="dark ? '切换浅色主题' : '切换深色主题'" @click="dark = !dark"><el-icon><Sunny v-if="dark" /><Moon v-else /></el-icon><span>{{ dark ? '深色' : '浅色' }}</span></button><button class="user-chip" title="退出登录" @click="logout"><div class="avatar">A</div><div class="user-copy"><strong>admin</strong><span>管理员</span></div></button></div></header>
+      <header class="topbar"><div class="mobile-brand"><div class="brand-mark">H</div><strong>{{ siteName }}</strong></div><div class="crumb"><span>{{ siteName }}</span><b>/</b><strong>{{ pageTitle }}</strong></div><div class="top-actions"><div class="search-box"><el-icon><Search /></el-icon><input v-model="search" placeholder="搜索服务..." /><kbd>⌘ K</kbd></div><div class="notice-wrap"><button class="icon-btn" :class="{ active: noticeOpen }" title="通知" @click="openNotices"><el-icon><Bell /></el-icon><i v-if="notices.length" class="notice-dot"></i></button><div v-if="noticeOpen" class="notice-panel"><div class="notice-head"><strong>通知</strong><div><span>{{ notices.length }} 条</span><button v-if="notices.length" class="notice-clear" title="清除全部通知" @click.stop="clearNotices">清除</button></div></div><div v-if="!notices.length" class="notice-empty"><el-icon><Bell /></el-icon><span>暂无需要处理的通知</span></div><div v-for="notice in notices" :key="notice.key" class="notice-item"><span class="notice-icon" :class="notice.type"><el-icon><component :is="notice.icon" /></el-icon></span><span><strong>{{ notice.title }}</strong><small>{{ notice.text }}</small></span><button class="notice-dismiss" title="清除通知" @click.stop="dismissNotice(notice)"><el-icon><Close /></el-icon></button></div></div></div><button class="icon-btn theme-toggle" :title="dark ? '切换浅色主题' : '切换深色主题'" @click="dark = !dark"><el-icon><Sunny v-if="dark" /><Moon v-else /></el-icon><span>{{ dark ? '深色' : '浅色' }}</span></button><el-dropdown class="user-dropdown" trigger="click" placement="bottom-end" popper-class="user-menu" @command="handleUserCommand"><button class="user-chip" title="账户菜单"><div class="avatar">A</div><div class="user-copy"><strong>admin</strong><span>管理员</span></div><el-icon class="user-chevron"><ArrowDown /></el-icon></button><template #dropdown><el-dropdown-menu><el-dropdown-item command="settings"><el-icon><Setting /></el-icon>系统设置</el-dropdown-item><el-dropdown-item divided command="logout">退出登录</el-dropdown-item></el-dropdown-menu></template></el-dropdown></div></header>
       <div class="mobile-tabs"><button v-for="item in nav" :key="item.path" :class="{ active: route.path === item.path }" @click="go(item.path)"><el-icon><component :is="item.icon" /></el-icon>{{ item.label }}</button></div>
       <div class="content"><router-view /></div>
     </main>
