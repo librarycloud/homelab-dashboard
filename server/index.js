@@ -67,6 +67,99 @@ const numericFields = {
   version_status: [0, 1, 2, 3],
   docker_status: [0, 1, 2, 3, 4]
 }
+const settingKeys = ['site_name', 'site_subtitle', 'primary_color', 'checking_enabled', 'check_interval', 'notifications', 'service_categories']
+const defaultSettings = Object.freeze({
+  siteName: 'HomeLab',
+  siteSubtitle: 'CONTROL CENTER',
+  primaryColor: '#42d3b2',
+  checking: true,
+  checkInterval: '30',
+  notifications: { error: true, update: true, docker: false },
+  categories: ['监控', '存储', '媒体', '开发', '网络', '安全']
+})
+
+function cloneDefaultSettings() {
+  return { ...defaultSettings, notifications: { ...defaultSettings.notifications }, categories: [...defaultSettings.categories] }
+}
+
+function normalizeSettingText(value, fallback) {
+  const text = String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)
+  return text || fallback
+}
+
+function normalizePrimaryColor(value) {
+  const color = String(value ?? '').trim()
+  return /^#[\da-f]{6}$/i.test(color) ? color.toLowerCase() : defaultSettings.primaryColor
+}
+
+function normalizeCategories(value) {
+  if (!Array.isArray(value)) return [...defaultSettings.categories]
+  return [...new Set(value.map((item) => String(item ?? '').trim().slice(0, 50)).filter(Boolean))].slice(0, 50)
+}
+
+function normalizeSettings(value = {}) {
+  const notifications = value.notifications && typeof value.notifications === 'object' ? value.notifications : {}
+  return {
+    siteName: normalizeSettingText(value.siteName, defaultSettings.siteName),
+    siteSubtitle: normalizeSettingText(value.siteSubtitle, defaultSettings.siteSubtitle),
+    primaryColor: normalizePrimaryColor(value.primaryColor),
+    checking: typeof value.checking === 'boolean' ? value.checking : defaultSettings.checking,
+    checkInterval: ['15', '30', '60'].includes(String(value.checkInterval)) ? String(value.checkInterval) : defaultSettings.checkInterval,
+    notifications: {
+      error: typeof notifications.error === 'boolean' ? notifications.error : defaultSettings.notifications.error,
+      update: typeof notifications.update === 'boolean' ? notifications.update : defaultSettings.notifications.update,
+      docker: typeof notifications.docker === 'boolean' ? notifications.docker : defaultSettings.notifications.docker
+    },
+    categories: normalizeCategories(value.categories)
+  }
+}
+
+function parseSettingValue(value, fallback) {
+  try { return JSON.parse(value) } catch { return fallback }
+}
+
+async function readSettings() {
+  const rows = await query(`SELECT setting_key, setting_value FROM \`settings\` WHERE setting_key IN (${settingKeys.map(() => '?').join(', ')})`, settingKeys)
+  const values = Object.fromEntries(rows.map((row) => [row.setting_key, parseSettingValue(row.setting_value, undefined)]))
+  return normalizeSettings({
+    siteName: values.site_name,
+    siteSubtitle: values.site_subtitle,
+    primaryColor: values.primary_color,
+    checking: values.checking_enabled,
+    checkInterval: values.check_interval,
+    notifications: values.notifications,
+    categories: values.service_categories
+  })
+}
+
+function settingsPayload(body, current) {
+  const next = cloneDefaultSettings()
+  Object.assign(next, current)
+  if (body.siteName !== undefined) next.siteName = body.siteName
+  if (body.siteSubtitle !== undefined) next.siteSubtitle = body.siteSubtitle
+  if (body.primaryColor !== undefined) next.primaryColor = body.primaryColor
+  if (body.checking !== undefined) next.checking = body.checking
+  if (body.checkInterval !== undefined) next.checkInterval = body.checkInterval
+  if (body.notifications !== undefined) next.notifications = { ...current.notifications, ...body.notifications }
+  if (body.categories !== undefined) next.categories = body.categories
+  return normalizeSettings(next)
+}
+
+async function writeSettings(settings) {
+  const values = [
+    ['site_name', settings.siteName],
+    ['site_subtitle', settings.siteSubtitle],
+    ['primary_color', settings.primaryColor],
+    ['checking_enabled', settings.checking],
+    ['check_interval', settings.checkInterval],
+    ['notifications', settings.notifications],
+    ['service_categories', settings.categories]
+  ]
+  await query(
+    `INSERT INTO \`settings\` (setting_key, setting_value) VALUES ${values.map(() => '(?, ?)').join(', ')} ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+    values.flatMap(([key, value]) => [key, JSON.stringify(value)])
+  )
+}
 
 function servicePayload(body) {
   const payload = {}
@@ -200,6 +293,30 @@ app.post('/api/auth/logout', (req, res) => {
   if (token) sessions.delete(token)
   setSessionCookie(res, '', 0)
   res.json({ ok: true })
+})
+
+app.get('/api/settings', async (_req, res) => {
+  try {
+    res.json(await readSettings())
+  } catch (error) {
+    if (error.code === 'ER_NO_SUCH_TABLE') {
+      return res.status(503).json({ message: '设置表尚未创建，请执行 server/migrations/005_app_settings.sql' })
+    }
+    sendDatabaseError(res, error)
+  }
+})
+
+app.put('/api/settings', requireAuth, async (req, res) => {
+  try {
+    const settings = settingsPayload(req.body || {}, await readSettings())
+    await writeSettings(settings)
+    res.json(settings)
+  } catch (error) {
+    if (error.code === 'ER_NO_SUCH_TABLE') {
+      return res.status(503).json({ message: '设置表尚未创建，请执行 server/migrations/005_app_settings.sql' })
+    }
+    sendDatabaseError(res, error)
+  }
 })
 
 app.post('/api/auth/password', passwordChangeLimiter, requireAuth, async (req, res) => {

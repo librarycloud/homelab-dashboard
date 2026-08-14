@@ -58,7 +58,10 @@ ADMIN_PASSWORD=your_password
 
 ```bash
 mariadb -u root -p YOUR_DATABASE_NAME < server/migrations/004_login_audit_logs.sql
+mariadb -u root -p YOUR_DATABASE_NAME < server/migrations/005_app_settings.sql
 ```
+
+`settings` 表使用键值结构保存站点名称、副标题、主题色、检查频率、通知开关和服务分类；设置页修改后，其他浏览器和设备会读取同一份配置。
 
 通过 FRP、Nginx 或 Caddy 代理访问时，应用会根据可信代理链读取访客 IP。默认仅信任本机和内网代理，也可以在 `.env` 中明确填写代理节点 IP 或 CIDR：
 

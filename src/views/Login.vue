@@ -1,18 +1,28 @@
 <script setup>
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { Lock, User, ArrowRight } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import 'element-plus/es/components/message/style/css'
 import { useRoute, useRouter } from 'vue-router'
-import { authApi } from '../api'
-import { readSiteName } from '../siteName'
+import { authApi, settingsApi } from '../api'
+import { applySettings, DEFAULT_SETTINGS, normalizeSettings } from '../appSettings'
 
 const router = useRouter()
 const route = useRoute()
 const username = ref('admin')
 const password = ref('')
 const loading = ref(false)
-const siteName = readSiteName()
+const siteName = ref(DEFAULT_SETTINGS.siteName)
+const siteSubtitle = ref(DEFAULT_SETTINGS.siteSubtitle)
+
+onMounted(async () => {
+  try {
+    const settings = normalizeSettings(await settingsApi.get())
+    siteName.value = settings.siteName
+    siteSubtitle.value = settings.siteSubtitle
+    applySettings(settings)
+  } catch {}
+})
 
 async function submit() {
   if (!username.value.trim() || !password.value) {
@@ -35,7 +45,7 @@ async function submit() {
   <div class="login-page">
     <div class="login-orbit"></div>
     <div class="login-box">
-      <div class="brand login-brand"><div class="brand-mark">H</div><div><strong>{{ siteName }}</strong><span>CONTROL CENTER</span></div></div>
+      <div class="brand login-brand"><div class="brand-mark">H</div><div><strong>{{ siteName }}</strong><span>{{ siteSubtitle }}</span></div></div>
       <h1>欢迎回来</h1>
       <p>登录你的家庭实验室控制中心</p>
       <el-form @submit.prevent="submit">

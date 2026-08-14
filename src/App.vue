@@ -4,17 +4,17 @@ import { Bell, Close, Folder, Grid, House, Moon, Search, Setting, Sunny, Warning
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import 'element-plus/es/components/message/style/css'
-import { authApi, serviceApi } from './api'
-import { applySiteName, readSiteName } from './siteName'
-import { applyPrimaryColor, readPrimaryColor } from './theme'
+import { authApi, serviceApi, settingsApi } from './api'
+import { applySettings, DEFAULT_SETTINGS, normalizeSettings } from './appSettings'
 
 const route = useRoute()
 const router = useRouter()
 const dark = ref(localStorage.getItem('homelab-theme') !== 'light')
-const siteName = ref(readSiteName())
+const siteName = ref(DEFAULT_SETTINGS.siteName)
+const siteSubtitle = ref(DEFAULT_SETTINGS.siteSubtitle)
 const search = ref('')
 const services = ref([])
-const noticeSettings = ref({ error: true, update: true, docker: false })
+const noticeSettings = ref({ ...DEFAULT_SETTINGS.notifications })
 const noticeOpen = ref(false)
 const dismissedNotices = ref(new Set(JSON.parse(localStorage.getItem('homelab-dismissed-notices') || '[]')))
 const isLoginPage = computed(() => route.path === '/login')
@@ -34,16 +34,17 @@ const notices = computed(() => services.value.flatMap((service) => {
 
 function go(path) { router.push(path) }
 async function loadNotices() {
-  noticeSettings.value = {
-    error: localStorage.getItem('homelab-notify-error') !== 'off',
-    update: localStorage.getItem('homelab-notify-update') !== 'off',
-    docker: localStorage.getItem('homelab-notify-docker') === 'on'
-  }
   try { services.value = await serviceApi.list() } catch { services.value = [] }
 }
 function openNotices() { noticeOpen.value = !noticeOpen.value }
 function closeNotices() { noticeOpen.value = false }
-function syncSiteName(event) { siteName.value = event.detail || readSiteName(); applySiteName(siteName.value) }
+function syncSettings(event) {
+  const settings = normalizeSettings(event.detail || {})
+  siteName.value = settings.siteName
+  siteSubtitle.value = settings.siteSubtitle
+  noticeSettings.value = settings.notifications
+  applySettings(settings)
+}
 function persistDismissedNotices() { localStorage.setItem('homelab-dismissed-notices', JSON.stringify([...dismissedNotices.value])) }
 function dismissNotice(notice) { dismissedNotices.value = new Set([...dismissedNotices.value, notice.key]); persistDismissedNotices() }
 function clearNotices() { dismissedNotices.value = new Set([...dismissedNotices.value, ...notices.value.map((notice) => notice.key)]); persistDismissedNotices(); noticeOpen.value = false }
@@ -56,10 +57,13 @@ watch(dark, (value) => {
   localStorage.setItem('homelab-theme', value ? 'dark' : 'light')
   document.documentElement.classList.toggle('homelab-light', !value)
 }, { immediate: true })
-onMounted(() => window.addEventListener('homelab-site-name-changed', syncSiteName))
-onUnmounted(() => window.removeEventListener('homelab-site-name-changed', syncSiteName))
-applySiteName(siteName.value)
-applyPrimaryColor(readPrimaryColor())
+async function loadSettings() {
+  try { syncSettings({ detail: await settingsApi.get() }) } catch {}
+}
+onMounted(() => window.addEventListener('homelab-settings-changed', syncSettings))
+onUnmounted(() => window.removeEventListener('homelab-settings-changed', syncSettings))
+applySettings(DEFAULT_SETTINGS)
+void loadSettings()
 loadNotices()
 watch(() => route.path, (path) => {
   if (path !== '/login') loadNotices()
@@ -70,7 +74,7 @@ watch(() => route.path, (path) => {
   <router-view v-if="isLoginPage" />
   <div v-else class="app-shell" :class="{ light: !dark }">
     <aside class="sidebar">
-      <div class="brand"><div class="brand-mark">H</div><div><strong>{{ siteName }}</strong><span>CONTROL CENTER</span></div></div>
+      <div class="brand"><div class="brand-mark">H</div><div><strong>{{ siteName }}</strong><span>{{ siteSubtitle }}</span></div></div>
       <div class="workspace-label">工作区</div>
       <nav><button v-for="item in nav" :key="item.path" class="nav-item" :class="{ active: route.path === item.path }" @click="go(item.path)"><el-icon><component :is="item.icon" /></el-icon><span>{{ item.label }}</span></button></nav>
       <div class="sidebar-bottom"><button class="nav-item" :class="{ active: route.path === '/settings' }" @click="go('/settings')"><el-icon><Setting /></el-icon><span>系统设置</span></button><div class="system-state"><i></i><span>系统运行正常</span><small>v0.1.0</small></div></div>

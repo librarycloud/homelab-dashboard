@@ -24,6 +24,11 @@ export const systemApi = {
   loginAudit: (limit = 30) => request(`/system/login-audit?limit=${limit}`)
 }
 
+export const settingsApi = {
+  get: () => request('/settings'),
+  update: (settings) => request('/settings', { method: 'PUT', body: JSON.stringify(settings) })
+}
+
 export const serviceApi = {
   list: () => request('/services'),
   refresh: () => request('/services/refresh', { method: 'POST' }),

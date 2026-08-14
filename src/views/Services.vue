@@ -60,8 +60,8 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import "element-plus/es/components/message/style/css";
 import "element-plus/es/components/message-box/style/css";
 import { useRoute, useRouter } from "vue-router";
-import { serviceApi } from "../api";
-import { readServiceCategories } from "../serviceCategories";
+import { serviceApi, settingsApi } from "../api";
+import { DEFAULT_SETTINGS, normalizeSettings } from "../appSettings";
 
 const services = ref([]);
 const loading = ref(false);
@@ -71,7 +71,7 @@ const dialogOpen = ref(false);
 const editingId = ref(null);
 const search = ref("");
 const statusFilter = ref("all");
-const categoryOptions = ref(readServiceCategories());
+const categoryOptions = ref([...DEFAULT_SETTINGS.categories]);
 const route = useRoute();
 const router = useRouter();
 const statusOptions = [
@@ -251,6 +251,9 @@ async function loadServices() {
     loading.value = false;
   }
 }
+async function loadCategories() {
+  try { categoryOptions.value = normalizeSettings(await settingsApi.get()).categories } catch {}
+}
 async function saveService() {
   if (!form.name.trim()) return ElMessage.warning("请输入服务名称");
   const desiredPosition = Number(form.sort_order);
@@ -318,7 +321,7 @@ async function checkVersion(service) {
     checkingId.value = null;
   }
 }
-onMounted(loadServices);
+onMounted(() => { void loadServices(); void loadCategories(); });
 watch(() => route.query.edit, openEditFromRoute);
 </script>
 

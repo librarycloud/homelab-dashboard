@@ -48,14 +48,3 @@ export function applyPrimaryColor(value) {
   root.style.setProperty('--el-color-primary-dark-2', mix(rgb, [0, 0, 0], 0.2))
   return color
 }
-
-export function readPrimaryColor() {
-  return normalizePrimary(localStorage.getItem('homelab-primary-color') || DEFAULT_PRIMARY)
-}
-
-export function savePrimaryColor(value) {
-  const color = normalizePrimary(value)
-  localStorage.setItem('homelab-primary-color', color)
-  applyPrimaryColor(color)
-  return color
-}

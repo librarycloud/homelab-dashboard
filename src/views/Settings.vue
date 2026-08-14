@@ -4,64 +4,79 @@ import { Download, Lock, Bell, Refresh, Upload, Monitor, CircleCheck, Warning, I
 import { ElMessage, ElMessageBox } from 'element-plus'
 import 'element-plus/es/components/message/style/css'
 import 'element-plus/es/components/message-box/style/css'
-import { authApi, serviceApi, systemApi } from '../api'
-import { readServiceCategories, writeServiceCategories } from '../serviceCategories'
-import { readSiteName, saveSiteName } from '../siteName'
-import { normalizePrimary, PRIMARY_PRESETS, readPrimaryColor, savePrimaryColor } from '../theme'
+import { authApi, serviceApi, settingsApi, systemApi } from '../api'
+import { applySettings, DEFAULT_SETTINGS, normalizeSettings } from '../appSettings'
+import { applyPrimaryColor, normalizePrimary, PRIMARY_PRESETS } from '../theme'
 
 const passwordForm = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' })
 const passwordLoading = ref(false)
-const checking = ref(localStorage.getItem('homelab-checking') !== 'off')
-const checkInterval = ref(localStorage.getItem('homelab-check-interval') || '30')
-const notifications = reactive({ error: localStorage.getItem('homelab-notify-error') !== 'off', update: localStorage.getItem('homelab-notify-update') !== 'off', docker: localStorage.getItem('homelab-notify-docker') === 'on' })
+const checking = ref(DEFAULT_SETTINGS.checking)
+const checkInterval = ref(DEFAULT_SETTINGS.checkInterval)
+const notifications = reactive({ ...DEFAULT_SETTINGS.notifications })
 const system = ref(null)
 const importInput = ref(null)
 const loadingSystem = ref(false)
 const loginAudit = ref([])
 const loadingAudit = ref(false)
-const categories = ref(readServiceCategories())
+const categories = ref([...DEFAULT_SETTINGS.categories])
 const newCategory = ref('')
-const primaryColor = ref(readPrimaryColor())
-const siteName = ref(readSiteName())
+const primaryColor = ref(DEFAULT_SETTINGS.primaryColor)
+const siteName = ref(DEFAULT_SETTINGS.siteName)
+const siteSubtitle = ref(DEFAULT_SETTINGS.siteSubtitle)
 const primaryPresets = PRIMARY_PRESETS
 
 const sessionText = computed(() => '当前会话有效期 24 小时，凭据由服务端安全保存')
-function previewPrimaryColor(value) {
-  primaryColor.value = savePrimaryColor(normalizePrimary(value))
+function applySettingsToView(value) {
+  const settings = applySettings(value)
+  siteName.value = settings.siteName
+  siteSubtitle.value = settings.siteSubtitle
+  primaryColor.value = settings.primaryColor
+  checking.value = settings.checking
+  checkInterval.value = settings.checkInterval
+  Object.assign(notifications, settings.notifications)
+  categories.value = settings.categories
+  return settings
 }
-function selectPrimaryColor(value) {
-  primaryColor.value = savePrimaryColor(value)
-  ElMessage.success('主题色已更新')
+async function persistSettings(changes, message) {
+  const settings = applySettingsToView(await settingsApi.update(changes))
+  window.dispatchEvent(new CustomEvent('homelab-settings-changed', { detail: settings }))
+  if (message) ElMessage.success(message)
+  return settings
 }
-function resetPrimaryColor() {
-  selectPrimaryColor('#42d3b2')
+async function loadSettings() {
+  try { applySettingsToView(await settingsApi.get()) } catch (error) { ElMessage.error(error.message) }
 }
-function saveSiteNameSetting() {
-  if (!siteName.value.trim()) return ElMessage.warning('请输入站点名称')
-  siteName.value = saveSiteName(siteName.value)
-  ElMessage.success('站点名称已更新')
+async function previewPrimaryColor(value) {
+  if (!value) return
+  const color = normalizePrimary(value)
+  primaryColor.value = color
+  applyPrimaryColor(color)
+  try { await persistSettings({ primaryColor: color }, '主题色已更新') } catch (error) { ElMessage.error(error.message) }
 }
-function savePreferences() {
-  localStorage.setItem('homelab-checking', checking.value ? 'on' : 'off')
-  localStorage.setItem('homelab-check-interval', checkInterval.value)
-  localStorage.setItem('homelab-notify-error', notifications.error ? 'on' : 'off')
-  localStorage.setItem('homelab-notify-update', notifications.update ? 'on' : 'off')
-  localStorage.setItem('homelab-notify-docker', notifications.docker ? 'on' : 'off')
-  ElMessage.success('设置已保存')
+function selectPrimaryColor(value) { void previewPrimaryColor(value) }
+function resetPrimaryColor() { selectPrimaryColor('#42d3b2') }
+async function saveSiteNameSetting() {
+  if (!siteName.value.trim() || !siteSubtitle.value.trim()) return ElMessage.warning('请输入站点名称和副标题')
+  try { await persistSettings({ siteName: siteName.value, siteSubtitle: siteSubtitle.value }, '站点名称已更新') } catch (error) { ElMessage.error(error.message) }
 }
-function addCategory() {
+async function savePreferences() {
+  try { await persistSettings({ checking: checking.value, checkInterval: checkInterval.value, notifications: { ...notifications } }, '设置已保存') } catch (error) { ElMessage.error(error.message) }
+}
+async function addCategory() {
   const value = newCategory.value.trim()
   if (!value) return ElMessage.warning('请输入分类名称')
   if (categories.value.includes(value)) return ElMessage.warning('分类已存在')
-  categories.value = writeServiceCategories([...categories.value, value])
+  const previous = categories.value
+  categories.value = [...categories.value, value]
   newCategory.value = ''
-  ElMessage.success('分类已添加')
+  try { await persistSettings({ categories: categories.value }, '分类已添加') } catch (error) { categories.value = previous; ElMessage.error(error.message) }
 }
 async function removeCategory(category) {
   try {
     await ElMessageBox.confirm(`删除分类“${category}”？已有服务不会被删除，但会保留原分类文字。`, '删除分类', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' })
-    categories.value = writeServiceCategories(categories.value.filter((item) => item !== category))
-    ElMessage.success('分类已删除')
+    const previous = categories.value
+    categories.value = categories.value.filter((item) => item !== category)
+    try { await persistSettings({ categories: categories.value }, '分类已删除') } catch (error) { categories.value = previous; ElMessage.error(error.message) }
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') ElMessage.error(error.message || '删除失败')
   }
@@ -112,13 +127,13 @@ function failureReasonText(reason) {
 function auditIpTitle(entry) {
   return [`识别地址：${entry.ipAddress}`, entry.remoteAddress && `直连地址：${entry.remoteAddress}`, entry.proxyChain && `可信代理链：${entry.proxyChain}`].filter(Boolean).join('\n')
 }
-onMounted(() => { void Promise.all([loadSystem(), loadLoginAudit()]) })
+onMounted(() => { void Promise.all([loadSettings(), loadSystem(), loadLoginAudit()]) })
 </script>
 
 <template>
   <div class="page-head"><div><div class="eyebrow">WORKSPACE · SETTINGS</div><h1>系统设置</h1><p>管理账户安全、服务检查、通知、备份和系统运行信息。</p></div></div>
   <div class="settings-grid">
-    <section class="settings-panel"><div class="settings-heading"><div class="settings-icon system"><el-icon><Monitor /></el-icon></div><div><h2>站点名称</h2><span>用于浏览器标签页和界面品牌显示</span></div></div><el-form class="settings-form" @submit.prevent="saveSiteNameSetting"><el-form-item label="名称"><el-input v-model="siteName" maxlength="60" show-word-limit placeholder="例如：HomeLab" @keyup.enter="saveSiteNameSetting" /></el-form-item><el-button type="primary" @click="saveSiteNameSetting">保存名称</el-button></el-form></section>
+    <section class="settings-panel"><div class="settings-heading"><div class="settings-icon system"><el-icon><Monitor /></el-icon></div><div><h2>站点名称</h2><span>用于浏览器标签页和界面品牌显示</span></div></div><el-form class="settings-form" @submit.prevent="saveSiteNameSetting"><el-form-item label="名称"><el-input v-model="siteName" maxlength="60" show-word-limit placeholder="例如：HomeLab" @keyup.enter="saveSiteNameSetting" /></el-form-item><el-form-item label="副标题"><el-input v-model="siteSubtitle" maxlength="60" show-word-limit placeholder="例如：CONTROL CENTER" @keyup.enter="saveSiteNameSetting" /></el-form-item><el-button type="primary" @click="saveSiteNameSetting">保存名称</el-button></el-form></section>
     <section class="settings-panel"><div class="settings-heading"><div class="settings-icon security"><el-icon><Lock /></el-icon></div><div><h2>账户安全</h2><span>修改管理员密码和查看会话状态</span></div></div><el-form label-position="top" class="settings-form"><el-form-item label="当前密码"><el-input v-model="passwordForm.currentPassword" type="password" show-password /></el-form-item><el-form-item label="新密码"><el-input v-model="passwordForm.newPassword" type="password" show-password /></el-form-item><el-form-item label="确认新密码"><el-input v-model="passwordForm.confirmPassword" type="password" show-password /></el-form-item><el-button type="primary" :loading="passwordLoading" @click="changePassword">更新密码</el-button></el-form><div class="settings-note"><el-icon><InfoFilled /></el-icon>{{ sessionText }}</div></section>
     <section class="settings-panel"><div class="settings-heading"><div class="settings-icon theme"><el-icon><Brush /></el-icon></div><div><h2>主题外观</h2><span>自定义界面主色，选择后立即预览</span></div></div><div class="theme-color-control"><div class="theme-color-picker"><el-color-picker v-model="primaryColor" :predefine="primaryPresets" @change="previewPrimaryColor" /><div><strong>{{ (primaryColor || '#42d3b2').toUpperCase() }}</strong><p>支持 HEX 颜色值</p></div></div><el-button text @click="resetPrimaryColor">恢复默认</el-button></div><div class="theme-presets"><button v-for="color in primaryPresets" :key="color" class="theme-swatch" :class="{ selected: primaryColor === color }" :style="{ backgroundColor: color }" :title="`使用 ${color} 主题色`" @click="selectPrimaryColor(color)"><el-icon v-if="primaryColor === color"><CircleCheck /></el-icon></button></div></section>
     <section class="settings-panel"><div class="settings-heading"><div class="settings-icon service"><el-icon><Refresh /></el-icon></div><div><h2>服务检查</h2><span>控制版本和服务状态检查频率</span></div></div><div class="setting-row"><div><strong>启用自动检查</strong><p>在服务列表中定期刷新检查结果</p></div><el-switch v-model="checking" /></div><div class="setting-row"><div><strong>检查间隔</strong><p>页面打开时使用的刷新周期</p></div><el-select v-model="checkInterval" popper-class="homelab-select-popper" style="width: 130px"><el-option label="每 15 分钟" value="15" /><el-option label="每 30 分钟" value="30" /><el-option label="每 1 小时" value="60" /></el-select></div><el-button @click="savePreferences">保存检查设置</el-button></section>

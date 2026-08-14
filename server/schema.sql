@@ -63,3 +63,9 @@ CREATE TABLE login_audit_logs (
   INDEX idx_login_audit_success_created (success, created_at),
   INDEX idx_login_audit_ip_created (ip_address, created_at)
 );
+
+CREATE TABLE `settings` (
+  setting_key VARCHAR(64) NOT NULL PRIMARY KEY,
+  setting_value TEXT NOT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
