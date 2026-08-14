@@ -263,6 +263,9 @@ async function saveService() {
   }
   saving.value = true;
   try {
+    const originalPosition = editingId.value
+      ? servicePosition({ id: editingId.value })
+      : -1;
     const payload = { ...form };
     delete payload.sort_order;
     const saved = editingId.value
@@ -276,7 +279,7 @@ async function saveService() {
     const ids = services.value.map((item) => item.id);
     const savedIndex = ids.indexOf(saved.id);
     const targetIndex = desiredPosition - 1;
-    if (savedIndex !== targetIndex) {
+    if (originalPosition < 0 || desiredPosition !== originalPosition + 1) {
       ids.splice(savedIndex, 1);
       ids.splice(targetIndex, 0, saved.id);
       services.value = await serviceApi.reorder(ids);
