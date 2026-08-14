@@ -15,7 +15,7 @@ const sessions = new Map()
 let adminPassword = process.env.ADMIN_PASSWORD
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const clientDist = path.resolve(__dirname, '../dist')
-const clientIndexHtml = await readFile(path.join(clientDist, 'index.html'), 'utf8').catch(() => null)
+const clientIndexPath = path.join(clientDist, 'index.html')
 
 function trustProxySetting(value = 'loopback,linklocal,uniquelocal') {
   const entries = value.split(',').map((entry) => entry.trim()).filter(Boolean)
@@ -525,9 +525,12 @@ app.delete('/api/services/:id', requireAuth, async (req, res) => {
 })
 
 app.use(express.static(clientDist))
-app.get('*', (_req, res) => {
-  if (!clientIndexHtml) return res.status(404).send('Dashboard client is not built')
-  res.type('html').send(clientIndexHtml)
+app.get('*', (_req, res, next) => {
+  res.sendFile(clientIndexPath, (error) => {
+    if (!error) return
+    if (error.code === 'ENOENT') return res.status(404).send('Dashboard client is not built')
+    next(error)
+  })
 })
 
 const server = app.listen(port, async () => {
