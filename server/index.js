@@ -67,15 +67,15 @@ const numericFields = {
   version_status: [0, 1, 2, 3],
   docker_status: [0, 1, 2, 3, 4]
 }
-const settingKeys = ['site_name', 'site_subtitle', 'primary_color', 'checking_enabled', 'check_interval', 'version_checking_enabled', 'version_check_interval', 'session_ttl_hours', 'notifications', 'service_categories']
+const settingKeys = ['site_name', 'site_subtitle', 'primary_color', 'checking_enabled', 'check_interval', 'version_checking_enabled', 'version_check_interval_hours', 'version_check_interval', 'session_ttl_hours', 'notifications', 'service_categories']
 const defaultSettings = Object.freeze({
   siteName: 'HomeLab',
   siteSubtitle: 'CONTROL CENTER',
   primaryColor: '#42d3b2',
   checking: true,
-  checkInterval: '30',
+  checkInterval: 30,
   versionChecking: true,
-  versionCheckInterval: '60',
+  versionCheckInterval: 1,
   sessionTtlHours: defaultSessionTtlHours,
   notifications: { error: true, update: true, docker: false },
   categories: ['监控', '存储', '媒体', '开发', '网络', '安全']
@@ -107,9 +107,9 @@ function normalizeSettings(value = {}) {
     siteSubtitle: normalizeSettingText(value.siteSubtitle, defaultSettings.siteSubtitle),
     primaryColor: normalizePrimaryColor(value.primaryColor),
     checking: typeof value.checking === 'boolean' ? value.checking : defaultSettings.checking,
-    checkInterval: ['15', '30', '60'].includes(String(value.checkInterval)) ? String(value.checkInterval) : defaultSettings.checkInterval,
+    checkInterval: Number.isInteger(Number(value.checkInterval)) && Number(value.checkInterval) >= 1 && Number(value.checkInterval) <= 1440 ? Number(value.checkInterval) : defaultSettings.checkInterval,
     versionChecking: typeof value.versionChecking === 'boolean' ? value.versionChecking : defaultSettings.versionChecking,
-    versionCheckInterval: ['30', '60', '180'].includes(String(value.versionCheckInterval)) ? String(value.versionCheckInterval) : defaultSettings.versionCheckInterval,
+    versionCheckInterval: Number.isInteger(Number(value.versionCheckInterval)) && Number(value.versionCheckInterval) >= 1 && Number(value.versionCheckInterval) <= 168 ? Number(value.versionCheckInterval) : defaultSettings.versionCheckInterval,
     sessionTtlHours: Number.isInteger(Number(value.sessionTtlHours)) && Number(value.sessionTtlHours) >= 1 && Number(value.sessionTtlHours) <= 720 ? Number(value.sessionTtlHours) : defaultSettings.sessionTtlHours,
     notifications: {
       error: typeof notifications.error === 'boolean' ? notifications.error : defaultSettings.notifications.error,
@@ -134,7 +134,7 @@ async function readSettings() {
     checking: values.checking_enabled,
     checkInterval: values.check_interval,
     versionChecking: values.version_checking_enabled,
-    versionCheckInterval: values.version_check_interval,
+    versionCheckInterval: values.version_check_interval_hours ?? ({ 30: 1, 60: 1, 180: 3 }[Number(values.version_check_interval)] || values.version_check_interval),
     sessionTtlHours: values.session_ttl_hours,
     notifications: values.notifications,
     categories: values.service_categories
@@ -165,7 +165,7 @@ async function writeSettings(settings) {
     ['checking_enabled', settings.checking],
     ['check_interval', settings.checkInterval],
     ['version_checking_enabled', settings.versionChecking],
-    ['version_check_interval', settings.versionCheckInterval],
+    ['version_check_interval_hours', settings.versionCheckInterval],
     ['session_ttl_hours', settings.sessionTtlHours],
     ['notifications', settings.notifications],
     ['service_categories', settings.categories]
@@ -184,7 +184,7 @@ async function runScheduledVersionCheck() {
   try {
     const settings = await readSettings()
     if (!settings.versionChecking) return
-    const intervalMs = Number(settings.versionCheckInterval) * 60 * 1000
+    const intervalMs = Number(settings.versionCheckInterval) * 60 * 60 * 1000
     if (Date.now() - lastScheduledVersionCheckAt < intervalMs) return
     lastScheduledVersionCheckAt = Date.now()
     scheduledVersionCheckRunning = true
