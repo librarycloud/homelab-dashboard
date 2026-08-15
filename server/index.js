@@ -67,13 +67,15 @@ const numericFields = {
   version_status: [0, 1, 2, 3],
   docker_status: [0, 1, 2, 3, 4]
 }
-const settingKeys = ['site_name', 'site_subtitle', 'primary_color', 'checking_enabled', 'check_interval', 'session_ttl_hours', 'notifications', 'service_categories']
+const settingKeys = ['site_name', 'site_subtitle', 'primary_color', 'checking_enabled', 'check_interval', 'version_checking_enabled', 'version_check_interval', 'session_ttl_hours', 'notifications', 'service_categories']
 const defaultSettings = Object.freeze({
   siteName: 'HomeLab',
   siteSubtitle: 'CONTROL CENTER',
   primaryColor: '#42d3b2',
   checking: true,
   checkInterval: '30',
+  versionChecking: true,
+  versionCheckInterval: '60',
   sessionTtlHours: defaultSessionTtlHours,
   notifications: { error: true, update: true, docker: false },
   categories: ['监控', '存储', '媒体', '开发', '网络', '安全']
@@ -106,6 +108,8 @@ function normalizeSettings(value = {}) {
     primaryColor: normalizePrimaryColor(value.primaryColor),
     checking: typeof value.checking === 'boolean' ? value.checking : defaultSettings.checking,
     checkInterval: ['15', '30', '60'].includes(String(value.checkInterval)) ? String(value.checkInterval) : defaultSettings.checkInterval,
+    versionChecking: typeof value.versionChecking === 'boolean' ? value.versionChecking : defaultSettings.versionChecking,
+    versionCheckInterval: ['30', '60', '180'].includes(String(value.versionCheckInterval)) ? String(value.versionCheckInterval) : defaultSettings.versionCheckInterval,
     sessionTtlHours: Number.isInteger(Number(value.sessionTtlHours)) && Number(value.sessionTtlHours) >= 1 && Number(value.sessionTtlHours) <= 720 ? Number(value.sessionTtlHours) : defaultSettings.sessionTtlHours,
     notifications: {
       error: typeof notifications.error === 'boolean' ? notifications.error : defaultSettings.notifications.error,
@@ -129,6 +133,8 @@ async function readSettings() {
     primaryColor: values.primary_color,
     checking: values.checking_enabled,
     checkInterval: values.check_interval,
+    versionChecking: values.version_checking_enabled,
+    versionCheckInterval: values.version_check_interval,
     sessionTtlHours: values.session_ttl_hours,
     notifications: values.notifications,
     categories: values.service_categories
@@ -143,6 +149,8 @@ function settingsPayload(body, current) {
   if (body.primaryColor !== undefined) next.primaryColor = body.primaryColor
   if (body.checking !== undefined) next.checking = body.checking
   if (body.checkInterval !== undefined) next.checkInterval = body.checkInterval
+  if (body.versionChecking !== undefined) next.versionChecking = body.versionChecking
+  if (body.versionCheckInterval !== undefined) next.versionCheckInterval = body.versionCheckInterval
   if (body.sessionTtlHours !== undefined) next.sessionTtlHours = body.sessionTtlHours
   if (body.notifications !== undefined) next.notifications = { ...current.notifications, ...body.notifications }
   if (body.categories !== undefined) next.categories = body.categories
@@ -156,6 +164,8 @@ async function writeSettings(settings) {
     ['primary_color', settings.primaryColor],
     ['checking_enabled', settings.checking],
     ['check_interval', settings.checkInterval],
+    ['version_checking_enabled', settings.versionChecking],
+    ['version_check_interval', settings.versionCheckInterval],
     ['session_ttl_hours', settings.sessionTtlHours],
     ['notifications', settings.notifications],
     ['service_categories', settings.categories]
@@ -165,6 +175,40 @@ async function writeSettings(settings) {
     values.flatMap(([key, value]) => [key, JSON.stringify(value)])
   )
 }
+
+let scheduledVersionCheckRunning = false
+let lastScheduledVersionCheckAt = 0
+
+async function runScheduledVersionCheck() {
+  if (scheduledVersionCheckRunning) return
+  try {
+    const settings = await readSettings()
+    if (!settings.versionChecking) return
+    const intervalMs = Number(settings.versionCheckInterval) * 60 * 1000
+    if (Date.now() - lastScheduledVersionCheckAt < intervalMs) return
+    lastScheduledVersionCheckAt = Date.now()
+    scheduledVersionCheckRunning = true
+    const services = await query(`SELECT ${serviceColumns} FROM services ORDER BY sort_order ASC, favorite DESC, updated_at DESC`)
+    for (const service of services) {
+      if (service.version_type === 0) continue
+      try {
+        const update = await checkVersion(service)
+        const columns = Object.keys(update)
+        if (columns.length) await query(`UPDATE services SET ${columns.map((column) => `${column} = ?`).join(', ')} WHERE id = ?`, [...columns.map((column) => update[column]), service.id])
+      } catch (error) {
+        await query('UPDATE services SET version_status = 3, last_check_at = ? WHERE id = ?', [new Date(), service.id]).catch(() => {})
+        console.warn(`Scheduled version check failed for service ${service.id}:`, error.message)
+      }
+    }
+  } catch (error) {
+    if (error.code !== 'ER_NO_SUCH_TABLE') console.error('Scheduled version check unavailable:', error.message)
+  } finally {
+    scheduledVersionCheckRunning = false
+  }
+}
+
+const versionCheckTimer = setInterval(() => { void runScheduledVersionCheck() }, 60 * 1000)
+versionCheckTimer.unref?.()
 
 function servicePayload(body) {
   const payload = {}
@@ -555,6 +599,7 @@ const server = app.listen(port, async () => {
 })
 
 async function shutdown() {
+  clearInterval(versionCheckTimer)
   await pool.end()
   server.close(() => process.exit(0))
 }
