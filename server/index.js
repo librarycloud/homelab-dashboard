@@ -188,7 +188,7 @@ async function runScheduledVersionCheck() {
     if (Date.now() - lastScheduledVersionCheckAt < intervalMs) return
     lastScheduledVersionCheckAt = Date.now()
     scheduledVersionCheckRunning = true
-    const services = await query(`SELECT ${serviceColumns} FROM services ORDER BY sort_order ASC, favorite DESC, updated_at DESC`)
+    const services = await query(`SELECT ${serviceColumns} FROM services ORDER BY sort_order ASC`)
     for (const service of services) {
       if (service.version_type === 0) continue
       try {
@@ -435,7 +435,7 @@ app.get('/api/dashboard', requireAuth, async (_req, res) => {
         SUM(version_status = 2) AS updates,
         SUM(status = 3) AS errors
         FROM services`),
-      query(`SELECT ${serviceColumns} FROM services ORDER BY sort_order ASC, favorite DESC, updated_at DESC`)
+      query(`SELECT ${serviceColumns} FROM services ORDER BY sort_order ASC`)
     ])
     res.json({ summary: summaryRows[0], services, lastSync: new Date().toISOString() })
   } catch (error) {
@@ -446,7 +446,7 @@ app.get('/api/dashboard', requireAuth, async (_req, res) => {
 
 app.get('/api/services', requireAuth, async (_req, res) => {
   try {
-    const services = await query(`SELECT ${serviceColumns} FROM services ORDER BY sort_order ASC, favorite DESC, updated_at DESC`)
+    const services = await query(`SELECT ${serviceColumns} FROM services ORDER BY sort_order ASC`)
     res.json(services)
   } catch (error) {
     console.error(error)
@@ -456,13 +456,13 @@ app.get('/api/services', requireAuth, async (_req, res) => {
 
 app.post('/api/services/refresh', requireAuth, async (_req, res) => {
   try {
-    const services = await query(`SELECT ${serviceColumns} FROM services ORDER BY sort_order ASC, favorite DESC, updated_at DESC`)
+    const services = await query(`SELECT ${serviceColumns} FROM services ORDER BY sort_order ASC`)
     for (const service of services) {
       const update = await refreshServiceStatus(service)
       const columns = Object.keys(update)
       if (columns.length) await query(`UPDATE services SET ${columns.map((column) => `${column} = ?`).join(', ')} WHERE id = ?`, [...columns.map((column) => update[column]), service.id])
     }
-    res.json(await query(`SELECT ${serviceColumns} FROM services ORDER BY sort_order ASC, favorite DESC, updated_at DESC`))
+    res.json(await query(`SELECT ${serviceColumns} FROM services ORDER BY sort_order ASC`))
   } catch (error) {
     sendDatabaseError(res, error)
   }
@@ -531,7 +531,7 @@ app.post('/api/services/reorder', requireAuth, async (req, res) => {
     }
     await connection.commit()
     transactionStarted = false
-    const services = await connection.query(`SELECT ${serviceColumns} FROM services ORDER BY sort_order ASC, favorite DESC, updated_at DESC`)
+    const services = await connection.query(`SELECT ${serviceColumns} FROM services ORDER BY sort_order ASC`)
     res.json(services)
   } catch (error) {
     if (transactionStarted) await connection.rollback().catch(() => {})

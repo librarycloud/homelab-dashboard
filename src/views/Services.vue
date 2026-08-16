@@ -69,6 +69,7 @@ const saving = ref(false);
 const checkingId = ref(null);
 const dialogOpen = ref(false);
 const editingId = ref(null);
+const sortOrderChanged = ref(false);
 const search = ref("");
 const statusFilter = ref("all");
 const categoryOptions = ref([...DEFAULT_SETTINGS.categories]);
@@ -221,12 +222,14 @@ function resetForm(service = null) {
 }
 function openCreate() {
   editingId.value = null;
+  sortOrderChanged.value = false;
   resetForm();
   form.sort_order = services.value.length + 1;
   dialogOpen.value = true;
 }
 function openEdit(service) {
   editingId.value = service.id;
+  sortOrderChanged.value = false;
   resetForm(service);
   form.sort_order = servicePosition(service) + 1;
   dialogOpen.value = true;
@@ -279,7 +282,10 @@ async function saveService() {
     const ids = services.value.map((item) => item.id);
     const savedIndex = ids.indexOf(saved.id);
     const targetIndex = desiredPosition - 1;
-    if (originalPosition < 0 || desiredPosition !== originalPosition + 1) {
+    if (
+      originalPosition < 0 ||
+      (sortOrderChanged.value && desiredPosition !== originalPosition + 1)
+    ) {
       ids.splice(savedIndex, 1);
       ids.splice(targetIndex, 0, saved.id);
       services.value = await serviceApi.reorder(ids);
@@ -443,6 +449,7 @@ watch(() => route.query.edit, openEditFromRoute);
             :min="1"
             :max="services.length + (editingId ? 0 : 1)"
             :step="1"
+            @change="sortOrderChanged = true"
             controls-position="right"
             class="sort-order-input"
             aria-label="服务排序序号" /></el-form-item
