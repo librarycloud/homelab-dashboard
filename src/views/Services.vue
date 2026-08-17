@@ -474,11 +474,11 @@ watch(() => route.query.edit, openEditFromRoute);
         ><el-form-item label="内网地址"
           ><el-input
             v-model="form.lan_url"
-            placeholder="192.168.1.10:3001" /></el-form-item
+            placeholder="192.168.1.10:3001 或 udp://192.168.1.10:19132" /></el-form-item
         ><el-form-item label="公网地址"
           ><el-input
             v-model="form.wan_url"
-            placeholder="uptime.example.com 或公网 IP" /></el-form-item
+            placeholder="uptime.example.com 或 udp://公网 IP:19132" /></el-form-item
         ><el-form-item label="FRP 用户名"
           ><el-input
             v-model="form.frp_username"

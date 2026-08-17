@@ -73,6 +73,8 @@ HTTP/HTTPS 代理需要传递 `X-Forwarded-For`。纯 TCP FRP 转发若未启用
 
 The API reads the `services` table through a MariaDB connection pool. Database passwords stay in `.env` and are excluded by `.gitignore`.
 
+Minecraft Bedrock servers can be checked with a RakNet UDP ping by using an address such as `udp://192.168.1.10:19132` in the LAN or public address field. A valid Bedrock Pong response is required before the service is marked online.
+
 The first version uses only one business table, `services`. Docker, frp, local path, GitHub version data, and access URLs are stored directly on that record.
 
 ## Service management

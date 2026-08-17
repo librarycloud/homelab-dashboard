@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import dgram from 'node:dgram'
 import { readFile } from 'node:fs/promises'
 import http from 'node:http'
 import https from 'node:https'
@@ -11,6 +12,7 @@ const execFileAsync = promisify(execFile)
 const githubApiBase = (process.env.GITHUB_API_BASE || 'https://api.github.com').replace(/\/$/, '')
 const githubTimeoutMs = Math.min(Math.max(Number(process.env.GITHUB_TIMEOUT_MS || 20000), 5000), 60000)
 const statusCheckTimeoutMs = 8000
+const rakNetMagic = Buffer.from('00ffff00fefefefefdfdfdfd12345678', 'hex')
 
 function normalizeGithubRepository(githubUrl) {
   if (!githubUrl) return null
@@ -224,10 +226,61 @@ async function probeUrl(value, defaultProtocol = 'http', { allowSelfSigned = fal
   return false
 }
 
+function udpEndpoint(value) {
+  try {
+    const url = new URL(String(value).trim())
+    const port = Number(url.port || 19132)
+    if (url.protocol !== 'udp:' || !url.hostname || !Number.isInteger(port) || port < 1 || port > 65535) return null
+    return { hostname: url.hostname.replace(/^\[|\]$/g, ''), port }
+  } catch {
+    return null
+  }
+}
+
+function rakNetPingPacket() {
+  const packet = Buffer.alloc(33)
+  packet[0] = 0x01
+  packet.writeBigUInt64BE(BigInt(Date.now()), 1)
+  rakNetMagic.copy(packet, 9)
+  packet.writeBigUInt64BE(BigInt.asUintN(64, process.hrtime.bigint()), 25)
+  return packet
+}
+
+function probeRakNetUdp(value) {
+  const endpoint = udpEndpoint(value)
+  if (!endpoint) return Promise.resolve(false)
+
+  return new Promise((resolve) => {
+    const socket = dgram.createSocket(isIP(endpoint.hostname) === 6 ? 'udp6' : 'udp4')
+    let settled = false
+    const finish = (reachable) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      socket.close()
+      resolve(reachable)
+    }
+    const timeout = setTimeout(() => finish(false), statusCheckTimeoutMs)
+
+    socket.once('error', () => finish(false))
+    socket.on('message', (message) => {
+      const validPong = message.length >= 33
+        && message[0] === 0x1c
+        && message.subarray(17, 33).equals(rakNetMagic)
+      if (validPong) finish(true)
+    })
+    socket.send(rakNetPingPacket(), endpoint.port, endpoint.hostname, (error) => {
+      if (error) finish(false)
+    })
+  })
+}
+
 export async function refreshServiceStatus(service) {
   const now = new Date()
   const update = { last_check_at: now }
-  if (service.docker_enabled && service.docker_name) {
+  const address = service.lan_url || service.wan_url
+  const hasDockerCheck = service.docker_enabled && service.docker_name
+  if (hasDockerCheck) {
     try {
       const { stdout } = await execFileAsync('docker', ['inspect', service.docker_name, '--format', '{{json .State}}'], { timeout: statusCheckTimeoutMs })
       const state = JSON.parse(stdout)
@@ -241,8 +294,12 @@ export async function refreshServiceStatus(service) {
       update.docker_last_check_at = now
       update.status = 3
     }
-  } else if (service.lan_url || service.wan_url) {
-    const reachable = await probeUrl(service.lan_url || service.wan_url, service.lan_url ? 'http' : 'https', {
+  }
+  if (address && /^udp:\/\//i.test(address)) {
+    const reachable = await probeRakNetUdp(address)
+    update.status = reachable ? 1 : 0
+  } else if (address && !hasDockerCheck) {
+    const reachable = await probeUrl(address, service.lan_url ? 'http' : 'https', {
       allowSelfSigned: Boolean(service.lan_url)
     })
     update.status = reachable ? 1 : 0
