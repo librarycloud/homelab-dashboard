@@ -5,11 +5,18 @@ import { Download, Lock, Bell, Refresh, Upload, Monitor, CircleCheck, Warning, I
 import { ElMessage, ElMessageBox } from 'element-plus'
 import 'element-plus/es/components/message/style/css'
 import 'element-plus/es/components/message-box/style/css'
-import { authApi, serviceApi, settingsApi, systemApi } from '../api'
-import { applySettings, DEFAULT_SETTINGS, normalizeSettings } from '../appSettings'
+import { authApi, systemApi } from '../api'
+import { applySettings, DEFAULT_SETTINGS } from '../appSettings'
 import { applyPrimaryColor, normalizePrimary, PRIMARY_PRESETS } from '../theme'
+import { useAuthStore } from '../stores/auth'
+import { useServicesStore } from '../stores/services'
+import { useSettingsStore } from '../stores/settings'
 
 const router = useRouter()
+const authStore = useAuthStore()
+const servicesStore = useServicesStore()
+const settingsStore = useSettingsStore()
+
 const passwordForm = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' })
 const passwordLoading = ref(false)
 const checking = ref(DEFAULT_SETTINGS.checking)
@@ -46,13 +53,13 @@ function applySettingsToView(value) {
   return settings
 }
 async function persistSettings(changes, message) {
-  const settings = applySettingsToView(await settingsApi.update(changes))
-  window.dispatchEvent(new CustomEvent('homelab-settings-changed', { detail: settings }))
+  const updated = await settingsStore.updateSettings(changes)
+  applySettingsToView(updated)
   if (message) ElMessage.success(message)
-  return settings
+  return updated
 }
 async function loadSettings() {
-  try { applySettingsToView(await settingsApi.get()) } catch (error) { ElMessage.error(error.message) }
+  try { applySettingsToView(await settingsStore.fetchSettings(true)) } catch (error) { ElMessage.error(error.message) }
 }
 async function previewPrimaryColor(value) {
   if (!value) return
@@ -75,7 +82,7 @@ async function saveSessionLifetime() {
   try { await persistSettings({ sessionTtlHours: sessionTtlHours.value }, '会话有效期已保存，新登录后生效') } catch (error) { ElMessage.error(error.message) }
 }
 async function logout() {
-  try { await authApi.logout(); ElMessage.success('已退出登录'); router.replace('/login') } catch (error) { ElMessage.error(error.message) }
+  try { await authStore.logout(); ElMessage.success('已退出登录'); router.replace('/login') } catch (error) { ElMessage.error(error.message) }
 }
 async function addCategory() {
   const value = newCategory.value.trim()
@@ -104,7 +111,7 @@ async function changePassword() {
 }
 async function exportBackup() {
   try {
-    const services = await serviceApi.list()
+    const services = await servicesStore.fetchServices(true)
     const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), services }, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `homelab-backup-${new Date().toISOString().slice(0, 10)}.json`; link.click(); URL.revokeObjectURL(url)
     ElMessage.success('备份已导出')
@@ -116,14 +123,10 @@ async function importBackup(event) {
   if (!file) return
   try {
     const payload = JSON.parse(await file.text())
-    if (!Array.isArray(payload.services)) throw new Error('备份文件格式不正确')
+    if (!Array.isArray(payload.services)) throw new Error('备份文件格式不正确，缺少 services 数组')
     await ElMessageBox.confirm(`将恢复 ${payload.services.length} 个服务，已有服务会按 ID 更新。是否继续？`, '确认恢复', { type: 'warning' })
-    for (const service of payload.services) {
-      const { id, created_at, updated_at, last_check_at, docker_last_check_at, ...data } = service
-      if (id) await serviceApi.update(id, data)
-      else await serviceApi.create(data)
-    }
-    ElMessage.success('备份已恢复')
+    const res = await servicesStore.restoreBackup({ services: payload.services, mode: 'merge' })
+    ElMessage.success(res.message || '备份已成功恢复')
   } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error.message || '恢复失败') }
 }
 async function loadSystem() {

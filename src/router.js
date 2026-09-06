@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { authApi } from './api'
+import { useAuthStore } from './stores/auth'
 
 const Dashboard = () => import('./views/Dashboard.vue')
 const Services = () => import('./views/Services.vue')
@@ -19,12 +19,20 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
-  if (to.path === '/login') {
-    try { await authApi.me(); return '/' } catch { return true }
+  const authStore = useAuthStore()
+  if (!authStore.checked) {
+    await authStore.checkAuth()
   }
-  try { await authApi.me(); return true } catch {
+
+  if (to.path === '/login') {
+    if (authStore.isAuthenticated) return '/'
+    return true
+  }
+
+  if (!authStore.isAuthenticated) {
     return { path: '/login', query: { redirect: to.fullPath } }
   }
+  return true
 })
 
 export default router

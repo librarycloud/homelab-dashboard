@@ -1,26 +1,27 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { Lock, User, ArrowRight } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import 'element-plus/es/components/message/style/css'
 import { useRoute, useRouter } from 'vue-router'
-import { authApi, settingsApi } from '../api'
-import { applySettings, DEFAULT_SETTINGS, normalizeSettings } from '../appSettings'
+import { useAuthStore } from '../stores/auth'
+import { useSettingsStore } from '../stores/settings'
 
 const router = useRouter()
 const route = useRoute()
+const authStore = useAuthStore()
+const settingsStore = useSettingsStore()
+
 const username = ref('admin')
 const password = ref('')
 const loading = ref(false)
-const siteName = ref(DEFAULT_SETTINGS.siteName)
-const siteSubtitle = ref(DEFAULT_SETTINGS.siteSubtitle)
+
+const siteName = computed(() => settingsStore.siteName)
+const siteSubtitle = computed(() => settingsStore.siteSubtitle)
 
 onMounted(async () => {
   try {
-    const settings = normalizeSettings(await settingsApi.get())
-    siteName.value = settings.siteName
-    siteSubtitle.value = settings.siteSubtitle
-    applySettings(settings)
+    await settingsStore.fetchSettings()
   } catch {}
 })
 
@@ -31,7 +32,7 @@ async function submit() {
   }
   loading.value = true
   try {
-    await authApi.login({ username: username.value.trim(), password: password.value })
+    await authStore.login({ username: username.value.trim(), password: password.value })
     ElMessage.success('登录成功')
     await router.replace(typeof route.query.redirect === 'string' ? route.query.redirect : '/')
   } catch (error) {

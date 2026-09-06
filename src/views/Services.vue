@@ -60,19 +60,22 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import "element-plus/es/components/message/style/css";
 import "element-plus/es/components/message-box/style/css";
 import { useRoute, useRouter } from "vue-router";
-import { serviceApi, settingsApi } from "../api";
-import { DEFAULT_SETTINGS, normalizeSettings } from "../appSettings";
+import { useServicesStore } from "../stores/services";
+import { useSettingsStore } from "../stores/settings";
 
-const services = ref([]);
-const loading = ref(false);
+const servicesStore = useServicesStore();
+const settingsStore = useSettingsStore();
+
+const services = computed(() => servicesStore.services);
+const loading = computed(() => servicesStore.loading);
+const checkingId = computed(() => servicesStore.checkingId);
 const saving = ref(false);
-const checkingId = ref(null);
 const dialogOpen = ref(false);
 const editingId = ref(null);
 const sortOrderChanged = ref(false);
 const search = ref("");
 const statusFilter = ref("all");
-const categoryOptions = ref([...DEFAULT_SETTINGS.categories]);
+const categoryOptions = computed(() => settingsStore.categories);
 const route = useRoute();
 const router = useRouter();
 const statusOptions = [
@@ -244,18 +247,15 @@ function openEditFromRoute() {
   }
 }
 async function loadServices() {
-  loading.value = true;
   try {
-    services.value = await serviceApi.list();
+    await servicesStore.fetchServices(true);
     openEditFromRoute();
   } catch (error) {
     ElMessage.error(error.message);
-  } finally {
-    loading.value = false;
   }
 }
 async function loadCategories() {
-  try { categoryOptions.value = normalizeSettings(await settingsApi.get()).categories } catch {}
+  try { await settingsStore.fetchSettings(); } catch {}
 }
 async function saveService() {
   if (!form.name.trim()) return ElMessage.warning("请输入服务名称");
@@ -272,13 +272,9 @@ async function saveService() {
     const payload = { ...form };
     delete payload.sort_order;
     const saved = editingId.value
-      ? await serviceApi.update(editingId.value, payload)
-      : await serviceApi.create(payload);
-    const index = services.value.findIndex(
-      (service) => service.id === saved.id,
-    );
-    if (index >= 0) services.value.splice(index, 1, saved);
-    else services.value.push(saved);
+      ? await servicesStore.updateService(editingId.value, payload)
+      : await servicesStore.createService(payload);
+
     const ids = services.value.map((item) => item.id);
     const savedIndex = ids.indexOf(saved.id);
     const targetIndex = desiredPosition - 1;
@@ -288,7 +284,7 @@ async function saveService() {
     ) {
       ids.splice(savedIndex, 1);
       ids.splice(targetIndex, 0, saved.id);
-      services.value = await serviceApi.reorder(ids);
+      await servicesStore.reorderServices(ids);
     }
     dialogOpen.value = false;
     ElMessage.success(editingId.value ? "服务已更新" : "服务已添加");
@@ -308,8 +304,7 @@ async function removeService(service) {
       "删除服务",
       { type: "warning", confirmButtonText: "删除", cancelButtonText: "取消" },
     );
-    await serviceApi.remove(service.id);
-    services.value = services.value.filter((item) => item.id !== service.id);
+    await servicesStore.removeService(service.id);
     ElMessage.success("服务已删除");
   } catch (error) {
     if (error !== "cancel" && error !== "close")
@@ -317,20 +312,17 @@ async function removeService(service) {
   }
 }
 async function checkVersion(service) {
-  checkingId.value = service.id;
   try {
-    const updated = await serviceApi.checkVersion(service.id);
-    const index = services.value.findIndex((item) => item.id === updated.id);
-    if (index >= 0) services.value.splice(index, 1, updated);
+    await servicesStore.checkVersion(service.id);
     ElMessage.success("版本检测完成");
   } catch (error) {
-    await loadServices();
     ElMessage.error(error.message || "版本检测失败");
-  } finally {
-    checkingId.value = null;
   }
 }
-onMounted(() => { void loadServices(); void loadCategories(); });
+onMounted(() => {
+  void servicesStore.fetchServices().then(() => openEditFromRoute());
+  void loadCategories();
+});
 watch(() => route.query.edit, openEditFromRoute);
 </script>
 

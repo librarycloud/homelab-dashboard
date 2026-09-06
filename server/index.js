@@ -5,8 +5,8 @@ import { fileURLToPath } from 'node:url'
 import 'dotenv/config'
 import express from 'express'
 import { rateLimit } from 'express-rate-limit'
-import { pool, query } from './db.js'
-import { checkVersion, refreshServiceStatus } from './serviceChecks.js'
+import { pool, query, isDbConfigured, missingDbEnv } from './db.js'
+import { checkVersion, refreshServiceStatus, mapConcurrent } from './serviceChecks.js'
 
 const app = express()
 const port = process.env.API_PORT || 3000
@@ -124,10 +124,15 @@ function parseSettingValue(value, fallback) {
   try { return JSON.parse(value) } catch { return fallback }
 }
 
-async function readSettings() {
+let cachedSettings = null
+
+async function readSettings(forceRefresh = false) {
+  if (!forceRefresh && cachedSettings) {
+    return cachedSettings
+  }
   const rows = await query(`SELECT setting_key, setting_value FROM \`settings\` WHERE setting_key IN (${settingKeys.map(() => '?').join(', ')})`, settingKeys)
   const values = Object.fromEntries(rows.map((row) => [row.setting_key, parseSettingValue(row.setting_value, undefined)]))
-  return normalizeSettings({
+  cachedSettings = normalizeSettings({
     siteName: values.site_name,
     siteSubtitle: values.site_subtitle,
     primaryColor: values.primary_color,
@@ -139,6 +144,7 @@ async function readSettings() {
     notifications: values.notifications,
     categories: values.service_categories
   })
+  return cachedSettings
 }
 
 function settingsPayload(body, current) {
@@ -174,6 +180,7 @@ async function writeSettings(settings) {
     `INSERT INTO \`settings\` (setting_key, setting_value) VALUES ${values.map(() => '(?, ?)').join(', ')} ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
     values.flatMap(([key, value]) => [key, JSON.stringify(value)])
   )
+  cachedSettings = settings
 }
 
 let scheduledVersionCheckRunning = false
@@ -187,21 +194,24 @@ async function runScheduledVersionCheck() {
     const intervalMs = Number(settings.versionCheckInterval) * 60 * 60 * 1000
     if (Date.now() - lastScheduledVersionCheckAt < intervalMs) return
     lastScheduledVersionCheckAt = Date.now()
-    scheduledVersionCheckRunning = true
     const services = await query(`SELECT ${serviceColumns} FROM services ORDER BY sort_order ASC`)
-    for (const service of services) {
-      if (service.version_type === 0) continue
+    const targetServices = services.filter((service) => service.version_type !== 0)
+    await mapConcurrent(targetServices, 3, async (service) => {
       try {
         const update = await checkVersion(service)
         const columns = Object.keys(update)
-        if (columns.length) await query(`UPDATE services SET ${columns.map((column) => `${column} = ?`).join(', ')} WHERE id = ?`, [...columns.map((column) => update[column]), service.id])
+        if (columns.length) {
+          await query(`UPDATE services SET ${columns.map((column) => `${column} = ?`).join(', ')} WHERE id = ?`, [...columns.map((column) => update[column]), service.id])
+        }
       } catch (error) {
         await query('UPDATE services SET version_status = 3, last_check_at = ? WHERE id = ?', [new Date(), service.id]).catch(() => {})
         console.warn(`Scheduled version check failed for service ${service.id}:`, error.message)
       }
-    }
+    })
   } catch (error) {
-    if (error.code !== 'ER_NO_SUCH_TABLE') console.error('Scheduled version check unavailable:', error.message)
+    if (error.code !== 'ER_NO_SUCH_TABLE' && error.code !== 'DATABASE_NOT_CONFIGURED') {
+      console.error('Scheduled version check unavailable:', error.message)
+    }
   } finally {
     scheduledVersionCheckRunning = false
   }
@@ -234,6 +244,12 @@ function servicePayload(body) {
 
 function sendDatabaseError(res, error) {
   console.error(error)
+  if (error.code === 'DATABASE_NOT_CONFIGURED') {
+    return res.status(503).json({
+      code: 'DATABASE_NOT_CONFIGURED',
+      message: error.message || '数据库未配置，请在 .env 中配置数据库环境变量。'
+    })
+  }
   const migrationErrors = ['ER_TRUNCATED_WRONG_VALUE_FOR_FIELD', 'ER_DATA_TRUNCATED', 'WARN_DATA_TRUNCATED', 'ER_WRONG_VALUE']
   if (migrationErrors.includes(error.code)) {
     return res.status(409).json({
@@ -426,6 +442,65 @@ app.get('/api/system/login-audit', requireAuth, async (req, res) => {
   }
 })
 
+app.post('/api/system/restore', requireAuth, async (req, res) => {
+  const { services: backupServices, mode = 'merge' } = req.body || {}
+  if (!Array.isArray(backupServices)) {
+    return res.status(400).json({ message: '备份数据格式不正确，缺少 services 数组' })
+  }
+
+  let connection
+  let transactionStarted = false
+  try {
+    connection = await pool.getConnection()
+    await connection.beginTransaction()
+    transactionStarted = true
+
+    if (mode === 'replace') {
+      await connection.query('DELETE FROM services')
+    }
+
+    let restoredCount = 0
+    for (const item of backupServices) {
+      const payload = servicePayload(item)
+      if (!payload.name) continue
+
+      if (mode === 'merge' && item.id) {
+        const existingRows = await connection.query('SELECT id FROM services WHERE id = ?', [item.id])
+        if (existingRows.length > 0) {
+          const columns = Object.keys(payload)
+          if (columns.length) {
+            await connection.query(
+              `UPDATE services SET ${columns.map((col) => `${col} = ?`).join(', ')} WHERE id = ?`,
+              [...columns.map((col) => payload[col]), item.id]
+            )
+          }
+          restoredCount += 1
+          continue
+        }
+      }
+
+      const columns = Object.keys(payload)
+      if (columns.length) {
+        await connection.query(
+          `INSERT INTO services (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
+          columns.map((col) => payload[col])
+        )
+        restoredCount += 1
+      }
+    }
+
+    await connection.commit()
+    transactionStarted = false
+    const currentServices = await connection.query(`SELECT ${serviceColumns} FROM services ORDER BY sort_order ASC, favorite DESC, updated_at DESC`)
+    res.json({ ok: true, message: `成功恢复 ${restoredCount} 个服务配置`, services: currentServices })
+  } catch (error) {
+    if (transactionStarted) await connection.rollback().catch(() => {})
+    sendDatabaseError(res, error)
+  } finally {
+    connection?.release()
+  }
+})
+
 app.get('/api/dashboard', requireAuth, async (_req, res) => {
   try {
     const [summaryRows, services] = await Promise.all([
@@ -457,11 +532,17 @@ app.get('/api/services', requireAuth, async (_req, res) => {
 app.post('/api/services/refresh', requireAuth, async (_req, res) => {
   try {
     const services = await query(`SELECT ${serviceColumns} FROM services ORDER BY sort_order ASC`)
-    for (const service of services) {
-      const update = await refreshServiceStatus(service)
-      const columns = Object.keys(update)
-      if (columns.length) await query(`UPDATE services SET ${columns.map((column) => `${column} = ?`).join(', ')} WHERE id = ?`, [...columns.map((column) => update[column]), service.id])
-    }
+    await mapConcurrent(services, 5, async (service) => {
+      try {
+        const update = await refreshServiceStatus(service)
+        const columns = Object.keys(update)
+        if (columns.length) {
+          await query(`UPDATE services SET ${columns.map((column) => `${column} = ?`).join(', ')} WHERE id = ?`, [...columns.map((column) => update[column]), service.id])
+        }
+      } catch (err) {
+        console.warn(`Service status refresh failed for ${service.id}:`, err.message)
+      }
+    })
     res.json(await query(`SELECT ${serviceColumns} FROM services ORDER BY sort_order ASC`))
   } catch (error) {
     sendDatabaseError(res, error)
@@ -526,9 +607,12 @@ app.post('/api/services/reorder', requireAuth, async (req, res) => {
 
     await connection.beginTransaction()
     transactionStarted = true
-    for (let index = 0; index < ids.length; index += 1) {
-      await connection.query('UPDATE services SET sort_order = ? WHERE id = ?', [index, ids[index]])
-    }
+    const caseSql = ids.map(() => 'WHEN id = ? THEN ?').join(' ')
+    const caseParams = ids.flatMap((id, index) => [id, index])
+    await connection.query(
+      `UPDATE services SET sort_order = CASE ${caseSql} END WHERE id IN (${ids.map(() => '?').join(', ')})`,
+      [...caseParams, ...ids]
+    )
     await connection.commit()
     transactionStarted = false
     const services = await connection.query(`SELECT ${serviceColumns} FROM services ORDER BY sort_order ASC`)
@@ -590,6 +674,10 @@ app.get('*', (_req, res, next) => {
 })
 
 const server = app.listen(port, async () => {
+  if (!isDbConfigured) {
+    console.warn(`[HomeLab API] 正在运行于 :${port}，但数据库未配置 (缺少: ${missingDbEnv.join(', ')})。请在 .env 中设置数据库连接。`)
+    return
+  }
   try {
     await query('SELECT 1 AS connected')
     console.log(`HomeLab API listening on :${port}; MariaDB connected`)
@@ -600,7 +688,7 @@ const server = app.listen(port, async () => {
 
 async function shutdown() {
   clearInterval(versionCheckTimer)
-  await pool.end()
+  if (pool) await pool.end().catch(() => {})
   server.close(() => process.exit(0))
 }
 process.on('SIGINT', shutdown)

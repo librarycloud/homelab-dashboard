@@ -306,3 +306,24 @@ export async function refreshServiceStatus(service) {
   }
   return update
 }
+
+export async function mapConcurrent(items, limit, workerFn) {
+  if (!items || !items.length) return []
+  const concurrency = Math.max(1, Math.min(limit, items.length))
+  const results = new Array(items.length)
+  let currentIndex = 0
+
+  const workers = Array.from({ length: concurrency }, async () => {
+    while (currentIndex < items.length) {
+      const index = currentIndex++
+      try {
+        results[index] = await workerFn(items[index], index)
+      } catch (error) {
+        results[index] = { error }
+      }
+    }
+  })
+
+  await Promise.all(workers)
+  return results
+}

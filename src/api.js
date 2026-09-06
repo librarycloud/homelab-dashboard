@@ -21,7 +21,8 @@ export const authApi = {
 
 export const systemApi = {
   info: () => request('/system/info'),
-  loginAudit: (limit = 10) => request(`/system/login-audit?limit=${limit}`)
+  loginAudit: (limit = 10) => request(`/system/login-audit?limit=${limit}`),
+  restore: (payload) => request('/system/restore', { method: 'POST', body: JSON.stringify(payload) })
 }
 
 export const settingsApi = {

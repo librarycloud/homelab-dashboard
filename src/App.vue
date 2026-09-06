@@ -2,60 +2,88 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { Bell, Close, Folder, Grid, House, Moon, Setting, Sunny, WarningFilled } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
-import { serviceApi, settingsApi } from './api'
-import { applySettings, DEFAULT_SETTINGS, normalizeSettings } from './appSettings'
+import { useServicesStore } from './stores/services'
+import { useSettingsStore } from './stores/settings'
 
 const route = useRoute()
 const router = useRouter()
+const servicesStore = useServicesStore()
+const settingsStore = useSettingsStore()
+
 const dark = ref(localStorage.getItem('homelab-theme') !== 'light')
-const siteName = ref(DEFAULT_SETTINGS.siteName)
-const siteSubtitle = ref(DEFAULT_SETTINGS.siteSubtitle)
-const services = ref([])
-const noticeSettings = ref({ ...DEFAULT_SETTINGS.notifications })
 const noticeOpen = ref(false)
 const dismissedNotices = ref(new Set(JSON.parse(localStorage.getItem('homelab-dismissed-notices') || '[]')))
 const isLoginPage = computed(() => route.path === '/login')
+
+const siteName = computed(() => settingsStore.siteName)
+const siteSubtitle = computed(() => settingsStore.siteSubtitle)
+
 const nav = [
   { label: '总览', path: '/', icon: House },
   { label: '我的服务', path: '/services', icon: Grid },
   { label: '项目管理', path: '/projects', icon: Folder }
 ]
-const notices = computed(() => services.value.flatMap((service) => {
+
+const notices = computed(() => servicesStore.services.flatMap((service) => {
   const items = []
-  if (noticeSettings.value.error && (service.status === 3 || service.status === 0)) items.push({ key: `${service.id}-status`, type: 'danger', icon: WarningFilled, title: `${service.name} 状态异常`, text: service.status === 0 ? '服务当前处于离线状态' : '服务当前处于异常状态' })
-  if (noticeSettings.value.update && service.version_status === 2) items.push({ key: `${service.id}-version`, type: 'warning', icon: Bell, title: `${service.name} 有新版本`, text: `可更新至 ${service.remote_version || '最新版本'}` })
-  if (noticeSettings.value.docker && service.docker_enabled && [2, 3, 4].includes(service.docker_status)) items.push({ key: `${service.id}-docker`, type: 'danger', icon: WarningFilled, title: `${service.name} Docker 异常`, text: service.docker_health || '请检查容器运行状态' })
+  const noticeSettings = settingsStore.notifications
+  if (noticeSettings.error && (service.status === 3 || service.status === 0)) {
+    items.push({ key: `${service.id}-status`, type: 'danger', icon: WarningFilled, title: `${service.name} 状态异常`, text: service.status === 0 ? '服务当前处于离线状态' : '服务当前处于异常状态' })
+  }
+  if (noticeSettings.update && service.version_status === 2) {
+    items.push({ key: `${service.id}-version`, type: 'warning', icon: Bell, title: `${service.name} 有新版本`, text: `可更新至 ${service.remote_version || '最新版本'}` })
+  }
+  if (noticeSettings.docker && service.docker_enabled && [2, 3, 4].includes(service.docker_status)) {
+    items.push({ key: `${service.id}-docker`, type: 'danger', icon: WarningFilled, title: `${service.name} Docker 异常`, text: service.docker_health || '请检查容器运行状态' })
+  }
   return items
 }).filter((notice) => !dismissedNotices.value.has(notice.key)))
 
 function go(path) { router.push(path) }
-async function loadNotices() {
-  try { services.value = await serviceApi.list() } catch { services.value = [] }
+
+function persistDismissedNotices() {
+  localStorage.setItem('homelab-dismissed-notices', JSON.stringify([...dismissedNotices.value]))
 }
-function syncSettings(event) {
-  const settings = normalizeSettings(event.detail || {})
-  siteName.value = settings.siteName
-  siteSubtitle.value = settings.siteSubtitle
-  noticeSettings.value = settings.notifications
-  applySettings(settings)
+function dismissNotice(notice) {
+  dismissedNotices.value = new Set([...dismissedNotices.value, notice.key])
+  persistDismissedNotices()
 }
-function persistDismissedNotices() { localStorage.setItem('homelab-dismissed-notices', JSON.stringify([...dismissedNotices.value])) }
-function dismissNotice(notice) { dismissedNotices.value = new Set([...dismissedNotices.value, notice.key]); persistDismissedNotices() }
-function clearNotices() { dismissedNotices.value = new Set([...dismissedNotices.value, ...notices.value.map((notice) => notice.key)]); persistDismissedNotices(); noticeOpen.value = false }
+function clearNotices() {
+  dismissedNotices.value = new Set([...dismissedNotices.value, ...notices.value.map((notice) => notice.key)])
+  persistDismissedNotices()
+  noticeOpen.value = false
+}
+
 watch(dark, (value) => {
   localStorage.setItem('homelab-theme', value ? 'dark' : 'light')
   document.documentElement.classList.toggle('homelab-light', !value)
 }, { immediate: true })
-async function loadSettings() {
-  try { syncSettings({ detail: await settingsApi.get() }) } catch {}
-}
-onMounted(() => window.addEventListener('homelab-settings-changed', syncSettings))
-onUnmounted(() => window.removeEventListener('homelab-settings-changed', syncSettings))
-applySettings(DEFAULT_SETTINGS)
-void loadSettings()
-loadNotices()
-watch(() => route.path, (path) => {
-  if (path !== '/login') loadNotices()
+
+onMounted(async () => {
+  await settingsStore.fetchSettings()
+  if (!isLoginPage.value) {
+    await servicesStore.fetchServices()
+    servicesStore.startAutoCheck()
+  }
+})
+
+onUnmounted(() => {
+  servicesStore.stopAutoCheck()
+})
+
+watch(() => route.path, async (newPath) => {
+  if (newPath !== '/login') {
+    await servicesStore.fetchServices()
+    servicesStore.startAutoCheck()
+  } else {
+    servicesStore.stopAutoCheck()
+  }
+})
+
+watch(() => [settingsStore.checking, settingsStore.checkInterval], () => {
+  if (!isLoginPage.value) {
+    servicesStore.startAutoCheck()
+  }
 })
 </script>
 

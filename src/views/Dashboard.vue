@@ -5,16 +5,19 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import 'element-plus/es/components/message/style/css'
 import 'element-plus/es/components/message-box/style/css'
 import { useRouter } from 'vue-router'
-import { serviceApi } from '../api'
+import { useServicesStore } from '../stores/services'
 
-const services = ref([])
-const loading = ref(false)
-const checkingId = ref(null)
-const checkingAll = ref(false)
-const checkingProgress = ref(0)
+const servicesStore = useServicesStore()
+const router = useRouter()
+
+const services = computed(() => servicesStore.services)
+const loading = computed(() => servicesStore.loading)
+const checkingId = computed(() => servicesStore.checkingId)
+const checkingAll = computed(() => servicesStore.checkingAll)
+const checkingProgress = computed(() => servicesStore.checkingProgress)
+
 const openFrpId = ref(null)
 const filter = ref('全部')
-const router = useRouter()
 const filters = ['全部', '运行中', '有更新', '维护中']
 const statusMeta = { 0: ['离线', 'info'], 1: ['运行中', 'success'], 2: ['告警', 'warning'], 3: ['异常', 'danger'], 4: ['维护中', 'info'] }
 const serviceIconMap = { Monitor, Platform, Avatar, UserFilled, DataAnalysis, DataBoard, PieChart, Odometer, Cpu, Connection, House, Grid, Folder, FolderOpened, Picture, Camera, Calendar, Lock, Key, User, Message, Bell, Headset, Link, Share, Collection, Document, CopyDocument, Files, Download, Upload, AlarmClock, Film, VideoCamera, VideoCameraFilled, ShoppingCart, Coin, Tools, Setting, Management, Tickets, Box, Wallet, CircleCheck, Warning, InfoFilled }
@@ -34,40 +37,65 @@ function hasServiceValue(value) {
 }
 function formatTime(value) { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '尚未检测' }
 function openUrl(url, defaultProtocol = 'https') { if (url) window.open(url.startsWith('http://') || url.startsWith('https://') ? url : `${defaultProtocol}://${url}`, '_blank', 'noopener') }
-async function loadDashboard({ notify = false } = {}) { loading.value = true; try { services.value = notify ? await serviceApi.refresh() : await serviceApi.list(); if (notify) ElMessage.success('服务状态已刷新') } catch (error) { ElMessage.error(error.message) } finally { loading.value = false } }
-async function checkVersion(service) { if (checkingAll.value) return; checkingId.value = service.id; try { const updated = await serviceApi.checkVersion(service.id); const index = services.value.findIndex((item) => item.id === updated.id); if (index >= 0) services.value.splice(index, 1, updated); ElMessage.success('版本检测完成') } catch (error) { await loadDashboard(); ElMessage.error(error.message || '版本检测失败') } finally { checkingId.value = null } }
+
+async function loadDashboard({ notify = false } = {}) {
+  try {
+    if (notify) {
+      await servicesStore.refreshStatus()
+      ElMessage.success('服务状态已刷新')
+    } else {
+      await servicesStore.fetchServices()
+    }
+  } catch (error) {
+    ElMessage.error(error.message)
+  }
+}
+
+async function checkVersion(service) {
+  if (checkingAll.value) return
+  try {
+    await servicesStore.checkVersion(service.id)
+    ElMessage.success('版本检测完成')
+  } catch (error) {
+    ElMessage.error(error.message || '版本检测失败')
+  }
+}
+
 async function checkAllVersions() {
   if (checkingAll.value || loading.value) return
   if (!services.value.length) return ElMessage.info('暂无可检测的服务')
-  const targets = [...services.value]
-  let failed = 0
-  checkingAll.value = true
-  checkingProgress.value = 0
   try {
-    for (const service of targets) {
-      try {
-        const updated = await serviceApi.checkVersion(service.id)
-        const index = services.value.findIndex((item) => item.id === updated.id)
-        if (index >= 0) services.value.splice(index, 1, updated)
-      } catch {
-        failed += 1
-      } finally {
-        checkingProgress.value += 1
-      }
-    }
-    if (failed) ElMessage.warning(`版本检测完成，${targets.length - failed} 个成功，${failed} 个失败`)
-    else ElMessage.success(`已完成 ${targets.length} 个服务的版本检测`)
-  } finally {
-    checkingAll.value = false
-    checkingProgress.value = 0
+    const { total, success, failed } = await servicesStore.checkAllVersions(3)
+    if (failed) ElMessage.warning(`版本检测完成，${success} 个成功，${failed} 个失败`)
+    else ElMessage.success(`已完成 ${total} 个服务的版本检测`)
+  } catch (error) {
+    ElMessage.error(error.message || '版本检测异常')
   }
 }
-async function removeService(service) { try { await ElMessageBox.confirm(`确定删除“${service.name}”吗？此操作不可恢复。`, '删除服务', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }); await serviceApi.remove(service.id); services.value = services.value.filter((item) => item.id !== service.id); ElMessage.success('服务已删除') } catch (error) { if (error !== 'cancel' && error !== 'close') ElMessage.error(error.message || '删除失败') } }
-function handleServiceMenu(command, service) { if (command === 'check') return checkVersion(service); if (command === 'edit') return router.push({ path: '/services', query: { edit: service.id } }); if (command === 'delete') return removeService(service) }
+
+async function removeService(service) {
+  try {
+    await ElMessageBox.confirm(`确定删除“${service.name}”吗？此操作不可恢复。`, '删除服务', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' })
+    await servicesStore.removeService(service.id)
+    ElMessage.success('服务已删除')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error(error.message || '删除失败')
+  }
+}
+
+function handleServiceMenu(command, service) {
+  if (command === 'check') return checkVersion(service)
+  if (command === 'edit') return router.push({ path: '/services', query: { edit: service.id } })
+  if (command === 'delete') return removeService(service)
+}
+
 function toggleFrp(service) { openFrpId.value = openFrpId.value === service.id ? null : service.id }
 function closeFrpOutside(event) { if (!event.target.closest('.frp-info-wrap')) openFrpId.value = null }
 
-onMounted(() => { loadDashboard(); document.addEventListener('click', closeFrpOutside) })
+onMounted(() => {
+  loadDashboard()
+  document.addEventListener('click', closeFrpOutside)
+})
 onBeforeUnmount(() => document.removeEventListener('click', closeFrpOutside))
 </script>
 
