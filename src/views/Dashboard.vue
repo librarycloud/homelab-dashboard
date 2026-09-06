@@ -215,7 +215,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeFrpOutside))
         </template>
         <template v-else>
           <el-button @click="noteDialogVisible = false">关闭</el-button>
-          <el-button type="primary" plain @click="startEditNote">编辑备注</el-button>
+          <el-button type="primary" @click="startEditNote">编辑备注</el-button>
         </template>
       </div>
     </template>

@@ -35,47 +35,50 @@
 @media(max-width:720px){.overview-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.overview-stats .stat-card{padding:10px 12px}}
 @media(max-width:720px){.section .services-grid{grid-template-columns:1fr;gap:10px}.overview-stats{margin-bottom:20px}.overview-toolbar .heading-actions{width:100%;justify-content:flex-start;gap:8px;flex-wrap:wrap}.filter-tabs{max-width:100%;overflow-x:auto}.service-card{padding:15px}.service-meta{gap:7px}.updated{max-width:48%}.version-row{gap:20px}.service-links{flex-wrap:wrap}}
 .section .services-grid > .el-loading-mask{background:transparent!important}
-.note-btn.has-note{color:var(--homelab-primary,#42d3b2);border-color:rgba(66,211,178,.4)}
-.note-dot{width:5px;height:5px;background:var(--homelab-primary,#42d3b2);border-radius:50%;display:inline-block;margin-left:2px}
-.app-shell.light .note-btn.has-note{color:var(--homelab-primary,#16836d);border-color:rgba(22,131,109,.4);background:var(--homelab-primary-soft,#e2f4ef)}
-.app-shell.light .note-dot{background:var(--homelab-primary,#16836d)}
+.note-btn.has-note{color:var(--homelab-primary);border-color:rgba(var(--homelab-primary-rgb),.4)}
+.note-btn.has-note:hover{color:var(--homelab-primary);border-color:var(--homelab-primary);background:rgba(var(--homelab-primary-rgb),.1)}
+.note-dot{width:5px;height:5px;background:var(--homelab-primary);border-radius:50%;display:inline-block;margin-left:2px}
+html.homelab-light .note-btn.has-note,.app-shell.light .note-btn.has-note{color:var(--homelab-primary);border-color:rgba(var(--homelab-primary-rgb),.4);background:var(--homelab-primary-soft)}
+html.homelab-light .note-btn.has-note:hover,.app-shell.light .note-btn.has-note:hover{border-color:var(--homelab-primary)}
+html.homelab-light .note-dot,.app-shell.light .note-dot{background:var(--homelab-primary)}
 .service-note-dialog{border-radius:8px;max-width:540px}
 .note-dialog-body{display:flex;flex-direction:column;gap:12px}
 .note-meta-bar{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#748395}
 .note-category-tag{color:#8b9baa;font-size:11px}
 .note-meta-actions{display:flex;align-items:center;gap:8px}
 .note-action-btn{background:#151f29;border:1px solid #2a3946;color:#a6b5c3;padding:4px 9px;border-radius:4px;font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:.15s}
-.note-action-btn:hover{color:var(--homelab-primary,#42d3b2);border-color:var(--homelab-primary,#42d3b2)}
-.note-action-btn.edit{color:var(--homelab-primary,#42d3b2)}
+.note-action-btn:hover{color:var(--homelab-primary);border-color:var(--homelab-primary)}
+.note-action-btn.edit{color:var(--homelab-primary);border-color:rgba(var(--homelab-primary-rgb),.35)}
 .note-display-box{background:#0d141b;border:1px solid #202d38;border-radius:6px;padding:12px 14px;max-height:300px;overflow-y:auto}
 .note-text-content{margin:0;white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:13px;line-height:1.6;color:#d8e3ec}
 .note-dialog-footer{display:flex;justify-content:flex-end;gap:10px}
 .service-note-dialog .el-textarea__inner{background:#0d141b!important;border-color:#202d38!important;box-shadow:0 0 0 1px #202d38 inset!important;color:#d8e3ec!important;font-family:inherit;font-size:13px;line-height:1.6}
-.service-note-dialog .el-textarea__inner:focus{border-color:var(--homelab-primary,#42d3b2)!important;box-shadow:0 0 0 1px var(--homelab-primary,#42d3b2) inset!important}
+.service-note-dialog .el-textarea__inner:focus{border-color:var(--homelab-primary)!important;box-shadow:0 0 0 1px var(--homelab-primary) inset!important}
 .service-note-dialog .el-input__count,.service-note-dialog .el-input__count-inner{background:transparent!important;color:#748395!important}
 .service-note-dialog .el-button:not(.el-button--primary){background:#151f29!important;border-color:#2a3946!important;color:#a6b5c3!important}
-.service-note-dialog .el-button:not(.el-button--primary):hover{background:#1d2a35!important;border-color:var(--homelab-primary,#42d3b2)!important;color:var(--homelab-primary,#42d3b2)!important}
-.service-note-dialog .el-button--primary.is-plain{background:#183a39!important;border-color:#2c665c!important;color:var(--homelab-primary,#42d3b2)!important}
-.service-note-dialog .el-button--primary.is-plain:hover{background:#1d4847!important;border-color:var(--homelab-primary,#42d3b2)!important;color:#6ef5d6!important}
-.service-note-dialog .el-button--primary:not(.is-plain){background:var(--homelab-primary,#1d9c86)!important;border-color:var(--homelab-primary,#1d9c86)!important;color:var(--homelab-primary-contrast,#071510)!important}
-.service-note-dialog .el-button--primary:not(.is-plain):hover{background:var(--el-color-primary-light-3,#27b79d)!important;border-color:var(--el-color-primary-light-3,#27b79d)!important;color:var(--homelab-primary-contrast,#071510)!important}
+.service-note-dialog .el-button:not(.el-button--primary):hover{background:#1d2a35!important;border-color:var(--homelab-primary)!important;color:var(--homelab-primary)!important}
+.service-note-dialog .el-button--primary{background:var(--homelab-primary)!important;border-color:var(--homelab-primary)!important;color:var(--homelab-primary-contrast)!important}
+.service-note-dialog .el-button--primary:hover{background:var(--el-color-primary-light-3)!important;border-color:var(--el-color-primary-light-3)!important;color:var(--homelab-primary-contrast)!important}
+.service-note-dialog .el-button--primary.is-plain{background:rgba(var(--homelab-primary-rgb),.12)!important;border-color:rgba(var(--homelab-primary-rgb),.35)!important;color:var(--homelab-primary)!important}
+.service-note-dialog .el-button--primary.is-plain:hover{background:rgba(var(--homelab-primary-rgb),.22)!important;border-color:var(--homelab-primary)!important;color:var(--homelab-primary)!important}
 html.homelab-light .service-note-dialog,.app-shell.light .service-note-dialog{background:#fff!important;border-color:#dfe6ec!important}
 html.homelab-light .service-note-dialog .el-dialog__title,.app-shell.light .service-note-dialog .el-dialog__title{color:#1f2933!important}
 html.homelab-light .service-note-dialog .el-dialog__headerbtn .el-dialog__close,.app-shell.light .service-note-dialog .el-dialog__headerbtn .el-dialog__close{color:#71818f!important}
 html.homelab-light .note-meta-bar,.app-shell.light .note-meta-bar{color:#6e7f8d}
 html.homelab-light .note-category-tag,.app-shell.light .note-category-tag{color:#526573}
 html.homelab-light .note-action-btn,.app-shell.light .note-action-btn{background:#f7f9fa;border-color:#d6e0e6;color:#607381}
-html.homelab-light .note-action-btn:hover,.app-shell.light .note-action-btn:hover{color:var(--homelab-primary,#16836d);border-color:var(--homelab-primary,#16836d)}
+html.homelab-light .note-action-btn:hover,.app-shell.light .note-action-btn:hover{color:var(--homelab-primary);border-color:var(--homelab-primary)}
+html.homelab-light .note-action-btn.edit,.app-shell.light .note-action-btn.edit{color:var(--homelab-primary);border-color:rgba(var(--homelab-primary-rgb),.35)}
 html.homelab-light .note-display-box,.app-shell.light .note-display-box{background:#f5f7f9;border-color:#dbe4ea}
 html.homelab-light .note-text-content,.app-shell.light .note-text-content{color:#2b3945}
 html.homelab-light .service-note-dialog .el-textarea__inner,.app-shell.light .service-note-dialog .el-textarea__inner{background:#fff!important;border-color:#d6e0e7!important;box-shadow:0 0 0 1px #d6e0e7 inset!important;color:#2d3b46!important}
-html.homelab-light .service-note-dialog .el-textarea__inner:focus,.app-shell.light .service-note-dialog .el-textarea__inner:focus{border-color:var(--homelab-primary,#16836d)!important;box-shadow:0 0 0 1px var(--homelab-primary,#16836d) inset!important}
+html.homelab-light .service-note-dialog .el-textarea__inner:focus,.app-shell.light .service-note-dialog .el-textarea__inner:focus{border-color:var(--homelab-primary)!important;box-shadow:0 0 0 1px var(--homelab-primary) inset!important}
 html.homelab-light .service-note-dialog .el-input__count,html.homelab-light .service-note-dialog .el-input__count-inner,.app-shell.light .service-note-dialog .el-input__count,.app-shell.light .service-note-dialog .el-input__count-inner{background:transparent!important;color:#71818f!important}
 html.homelab-light .service-note-dialog .el-button:not(.el-button--primary),.app-shell.light .service-note-dialog .el-button:not(.el-button--primary){background:#fff!important;border-color:#d6e0e7!important;color:#526573!important}
-html.homelab-light .service-note-dialog .el-button:not(.el-button--primary):hover,.app-shell.light .service-note-dialog .el-button:not(.el-button--primary):hover{background:#f3f8f6!important;border-color:var(--homelab-primary,#16836d)!important;color:var(--homelab-primary,#16836d)!important}
-html.homelab-light .service-note-dialog .el-button--primary.is-plain,.app-shell.light .service-note-dialog .el-button--primary.is-plain{background:var(--homelab-primary-soft,#e2f4ef)!important;border-color:#a8d8cc!important;color:var(--homelab-primary,#16836d)!important}
-html.homelab-light .service-note-dialog .el-button--primary.is-plain:hover,.app-shell.light .service-note-dialog .el-button--primary.is-plain:hover{background:#cdeee5!important;border-color:var(--homelab-primary,#16836d)!important;color:var(--homelab-primary,#16836d)!important}
-html.homelab-light .service-note-dialog .el-button--primary:not(.is-plain),.app-shell.light .service-note-dialog .el-button--primary:not(.is-plain){background:var(--homelab-primary,#16836d)!important;border-color:var(--homelab-primary,#16836d)!important;color:#fff!important}
-html.homelab-light .service-note-dialog .el-button--primary:not(.is-plain):hover,.app-shell.light .service-note-dialog .el-button--primary:not(.is-plain):hover{background:#1d9c86!important;border-color:#1d9c86!important;color:#fff!important}
+html.homelab-light .service-note-dialog .el-button:not(.el-button--primary):hover,.app-shell.light .service-note-dialog .el-button:not(.el-button--primary):hover{background:var(--homelab-primary-soft)!important;border-color:var(--homelab-primary)!important;color:var(--homelab-primary)!important}
+html.homelab-light .service-note-dialog .el-button--primary,.app-shell.light .service-note-dialog .el-button--primary{background:var(--homelab-primary)!important;border-color:var(--homelab-primary)!important;color:#fff!important}
+html.homelab-light .service-note-dialog .el-button--primary:hover,.app-shell.light .service-note-dialog .el-button--primary:hover{background:var(--el-color-primary-dark-2)!important;border-color:var(--el-color-primary-dark-2)!important;color:#fff!important}
+html.homelab-light .service-note-dialog .el-button--primary.is-plain,.app-shell.light .service-note-dialog .el-button--primary.is-plain{background:var(--homelab-primary-soft)!important;border-color:rgba(var(--homelab-primary-rgb),.35)!important;color:var(--homelab-primary)!important}
+html.homelab-light .service-note-dialog .el-button--primary.is-plain:hover,.app-shell.light .service-note-dialog .el-button--primary.is-plain:hover{background:rgba(var(--homelab-primary-rgb),.18)!important;border-color:var(--homelab-primary)!important;color:var(--homelab-primary)!important}
 .note-tooltip{max-width:300px;white-space:pre-wrap;word-break:break-word;font-size:11px;line-height:1.4}
 @media(max-width:720px){.service-note-dialog{width:calc(100vw - 24px)!important}}
