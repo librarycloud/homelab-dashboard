@@ -7,6 +7,7 @@ import express from 'express'
 import { rateLimit } from 'express-rate-limit'
 import { pool, query, isDbConfigured, missingDbEnv } from './db.js'
 import { checkVersion, refreshServiceStatus, mapConcurrent } from './serviceChecks.js'
+import { refreshDomainInfo } from './domainChecks.js'
 
 const app = express()
 const port = process.env.API_PORT || 3000
@@ -201,7 +202,7 @@ async function runScheduledVersionCheck() {
         const update = await checkVersion(service)
         const columns = Object.keys(update)
         if (columns.length) {
-          await query(`UPDATE services SET ${columns.map((column) => `${column} = ?`).join(', ')} WHERE id = ?`, [...columns.map((column) => update[column]), service.id])
+          await query(`UPDATE services SET ${columns.map((column) => column + ' = ?').join(', ')} WHERE id = ?`, [...columns.map((column) => update[column]), service.id])
         }
       } catch (error) {
         await query('UPDATE services SET version_status = 3, last_check_at = ? WHERE id = ?', [new Date(), service.id]).catch(() => {})
@@ -241,6 +242,57 @@ function servicePayload(body) {
   }
   return payload
 }
+
+const domainColumns = `id, domain_name, category, sort_order, expiration_date, registrar_name, registrar_url, dns_provider_name, dns_provider_url, notes, auto_update, last_check_at, created_at, updated_at`
+
+function domainPayload(body) {
+  const payload = {}
+  if (typeof body.domain_name === 'string') payload.domain_name = body.domain_name.trim()
+  if (typeof body.category === 'string') payload.category = body.category.trim() || null
+  if (typeof body.registrar_name === 'string') payload.registrar_name = body.registrar_name.trim() || null
+  if (typeof body.registrar_url === 'string') payload.registrar_url = body.registrar_url.trim() || null
+  if (typeof body.dns_provider_name === 'string') payload.dns_provider_name = body.dns_provider_name.trim() || null
+  if (typeof body.dns_provider_url === 'string') payload.dns_provider_url = body.dns_provider_url.trim() || null
+  if (typeof body.notes === 'string') payload.notes = body.notes.trim() || null
+  if (body.expiration_date) payload.expiration_date = new Date(body.expiration_date)
+  if (body.expiration_date === null) payload.expiration_date = null
+  if (body.auto_update !== undefined) payload.auto_update = Boolean(body.auto_update)
+  if (body.sort_order !== undefined) {
+    const order = Number(body.sort_order)
+    if (Number.isInteger(order)) payload.sort_order = order
+  }
+  return payload
+}
+
+let scheduledDomainCheckRunning = false
+async function runScheduledDomainCheck() {
+  if (scheduledDomainCheckRunning) return
+  try {
+    scheduledDomainCheckRunning = true
+    // Get domains that haven't been checked in the last 24 hours and have auto_update enabled
+    const domains = await query(`SELECT ${domainColumns} FROM domains WHERE auto_update = 1 AND (last_check_at IS NULL OR last_check_at < DATE_SUB(NOW(), INTERVAL 24 HOUR))`)
+    await mapConcurrent(domains, 2, async (domain) => {
+      try {
+        const update = await refreshDomainInfo(domain)
+        const columns = Object.keys(update)
+        if (columns.length) {
+          await query(`UPDATE domains SET ${columns.map((column) => column + ' = ?').join(', ')} WHERE id = ?`, [...columns.map((column) => update[column]), domain.id])
+        }
+      } catch (error) {
+        console.warn(`Scheduled domain check failed for ${domain.domain_name}:`, error.message)
+      }
+    })
+  } catch (error) {
+    if (error.code !== 'ER_NO_SUCH_TABLE' && error.code !== 'DATABASE_NOT_CONFIGURED') {
+      console.error('Scheduled domain check unavailable:', error.message)
+    }
+  } finally {
+    scheduledDomainCheckRunning = false
+  }
+}
+
+const domainCheckTimer = setInterval(() => { void runScheduledDomainCheck() }, 60 * 60 * 1000)
+domainCheckTimer.unref?.()
 
 function sendDatabaseError(res, error) {
   console.error(error)
@@ -537,7 +589,7 @@ app.post('/api/services/refresh', requireAuth, async (_req, res) => {
         const update = await refreshServiceStatus(service)
         const columns = Object.keys(update)
         if (columns.length) {
-          await query(`UPDATE services SET ${columns.map((column) => `${column} = ?`).join(', ')} WHERE id = ?`, [...columns.map((column) => update[column]), service.id])
+          await query(`UPDATE services SET ${columns.map((column) => column + ' = ?').join(', ')} WHERE id = ?`, [...columns.map((column) => update[column]), service.id])
         }
       } catch (err) {
         console.warn(`Service status refresh failed for ${service.id}:`, err.message)
@@ -576,7 +628,7 @@ app.put('/api/services/:id', requireAuth, async (req, res) => {
 
   try {
     const result = await query(
-      `UPDATE services SET ${columns.map((column) => `${column} = ?`).join(', ')} WHERE id = ?`,
+      `UPDATE services SET ${columns.map((column) => column + ' = ?').join(', ')} WHERE id = ?`,
       [...columns.map((column) => service[column]), id]
     )
     if (!result.affectedRows) return res.status(404).json({ message: 'Service not found' })
@@ -643,7 +695,7 @@ app.post('/api/services/:id/check-version', requireAuth, async (req, res) => {
     }
 
     const columns = Object.keys(update)
-    await query(`UPDATE services SET ${columns.map((column) => `${column} = ?`).join(', ')} WHERE id = ?`, [...columns.map((column) => update[column]), id])
+    await query(`UPDATE services SET ${columns.map((column) => column + ' = ?').join(', ')} WHERE id = ?`, [...columns.map((column) => update[column]), id])
     const updatedRows = await query(`SELECT ${serviceColumns} FROM services WHERE id = ?`, [id])
     res.json(updatedRows[0])
   } catch (error) {
@@ -661,6 +713,178 @@ app.delete('/api/services/:id', requireAuth, async (req, res) => {
     res.status(204).end()
   } catch (error) {
     sendDatabaseError(res, error)
+  }
+})
+
+// === Domains API ===
+
+import { getDicts, saveDicts } from './domainChecks.js'
+
+app.get('/api/domains/dict', requireAuth, async (req, res) => {
+  try {
+    const dicts = await getDicts()
+    res.json(dicts)
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: 'Failed to fetch domain dictionaries' })
+  }
+})
+
+app.put('/api/domains/dict', requireAuth, async (req, res) => {
+  try {
+    const { registrars, dnsProviders } = req.body
+    await saveDicts(registrars || [], dnsProviders || [])
+    res.json({ success: true })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: 'Failed to save domain dictionaries' })
+  }
+})
+
+app.put('/api/domains/categories/rename', requireAuth, async (req, res) => {
+  try {
+    const { oldName, newName } = req.body
+    if (!oldName || !newName) return res.status(400).json({ message: 'Missing parameters' })
+    await query('UPDATE domains SET category = ? WHERE category = ?', [newName, oldName])
+    res.json({ success: true })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: 'Failed to rename category' })
+  }
+})
+
+app.post('/api/domains/categories/delete', requireAuth, async (req, res) => {
+  try {
+    const { name } = req.body
+    if (!name) return res.status(400).json({ message: 'Missing parameters' })
+    await query('UPDATE domains SET category = NULL WHERE category = ?', [name])
+    res.json({ success: true })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: 'Failed to delete category' })
+  }
+})
+
+app.get('/api/domains', requireAuth, async (_req, res) => {
+  try {
+    const domains = await query(`SELECT ${domainColumns} FROM domains ORDER BY sort_order ASC`)
+    res.json(domains)
+  } catch (error) {
+    if (error.code === 'ER_NO_SUCH_TABLE') return res.json([])
+    sendDatabaseError(res, error)
+  }
+})
+
+app.post('/api/domains', requireAuth, async (req, res) => {
+  const domain = domainPayload(req.body || {})
+  if (!domain.domain_name) return res.status(400).json({ message: 'Domain name is required' })
+
+  try {
+    const columns = Object.keys(domain)
+    const result = await query(
+      `INSERT INTO domains (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
+      columns.map((column) => domain[column])
+    )
+    const rows = await query(`SELECT ${domainColumns} FROM domains WHERE id = ?`, [result.insertId])
+    
+    // Auto trigger initial check in background if auto_update is on
+    if (domain.auto_update !== false) {
+      refreshDomainInfo(rows[0]).then(async (update) => {
+        const updateCols = Object.keys(update)
+        if (updateCols.length) {
+          await query(`UPDATE domains SET ${updateCols.map((column) => column + ' = ?').join(', ')} WHERE id = ?`, [...updateCols.map((column) => update[column]), result.insertId])
+        }
+      }).catch(console.error)
+    }
+    
+    res.status(201).json(rows[0])
+  } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: '域名已存在' })
+    sendDatabaseError(res, error)
+  }
+})
+
+app.put('/api/domains/:id', requireAuth, async (req, res) => {
+  const id = Number(req.params.id)
+  const domain = domainPayload(req.body || {})
+  if (!Number.isInteger(id) || id < 1) return res.status(400).json({ message: 'Invalid domain ID' })
+  const columns = Object.keys(domain)
+  if (!columns.length) return res.status(400).json({ message: 'No valid fields provided' })
+
+  try {
+    const result = await query(
+      `UPDATE domains SET ${columns.map((column) => column + ' = ?').join(', ')} WHERE id = ?`,
+      [...columns.map((column) => domain[column]), id]
+    )
+    if (!result.affectedRows) return res.status(404).json({ message: 'Domain not found' })
+    const rows = await query(`SELECT ${domainColumns} FROM domains WHERE id = ?`, [id])
+    res.json(rows[0])
+  } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: '域名已存在' })
+    sendDatabaseError(res, error)
+  }
+})
+
+app.delete('/api/domains/:id', requireAuth, async (req, res) => {
+  const id = Number(req.params.id)
+  if (!Number.isInteger(id) || id < 1) return res.status(400).json({ message: 'Invalid domain ID' })
+
+  try {
+    const result = await query('DELETE FROM domains WHERE id = ?', [id])
+    if (!result.affectedRows) return res.status(404).json({ message: 'Domain not found' })
+    res.status(204).end()
+  } catch (error) {
+    sendDatabaseError(res, error)
+  }
+})
+
+app.post('/api/domains/:id/refresh', requireAuth, async (req, res) => {
+  const id = Number(req.params.id)
+  if (!Number.isInteger(id) || id < 1) return res.status(400).json({ message: 'Invalid domain ID' })
+
+  try {
+    const rows = await query(`SELECT ${domainColumns} FROM domains WHERE id = ?`, [id])
+    const domain = rows[0]
+    if (!domain) return res.status(404).json({ message: 'Domain not found' })
+
+    const update = await refreshDomainInfo(domain)
+    const columns = Object.keys(update)
+    if (columns.length) {
+      await query(`UPDATE domains SET ${columns.map((column) => column + ' = ?').join(', ')} WHERE id = ?`, [...columns.map((column) => update[column]), id])
+    }
+    
+    const updatedRows = await query(`SELECT ${domainColumns} FROM domains WHERE id = ?`, [id])
+    res.json(updatedRows[0])
+  } catch (error) {
+    sendDatabaseError(res, error)
+  }
+})
+
+app.post('/api/domains/reorder', requireAuth, async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number) : []
+  if (!ids.length || ids.some((id) => !Number.isInteger(id) || id < 1) || new Set(ids).size !== ids.length) return res.status(400).json({ message: 'Invalid order' })
+
+  let connection
+  let transactionStarted = false
+  try {
+    connection = await pool.getConnection()
+    await connection.beginTransaction()
+    transactionStarted = true
+    const caseSql = ids.map(() => 'WHEN id = ? THEN ?').join(' ')
+    const caseParams = ids.flatMap((id, index) => [id, index])
+    await connection.query(
+      `UPDATE domains SET sort_order = CASE ${caseSql} END WHERE id IN (${ids.map(() => '?').join(', ')})`,
+      [...caseParams, ...ids]
+    )
+    await connection.commit()
+    transactionStarted = false
+    const domains = await connection.query(`SELECT ${domainColumns} FROM domains ORDER BY sort_order ASC`)
+    res.json(domains)
+  } catch (error) {
+    if (transactionStarted) await connection.rollback().catch(() => {})
+    sendDatabaseError(res, error)
+  } finally {
+    connection?.release()
   }
 })
 

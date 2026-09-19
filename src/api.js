@@ -39,3 +39,16 @@ export const serviceApi = {
   checkVersion: (id) => request(`/services/${id}/check-version`, { method: 'POST' }),
   remove: (id) => request(`/services/${id}`, { method: 'DELETE' })
 }
+
+export const domainApi = {
+  list: () => request('/domains'),
+  create: (domain) => request('/domains', { method: 'POST', body: JSON.stringify(domain) }),
+  update: (id, domain) => request(`/domains/${id}`, { method: 'PUT', body: JSON.stringify(domain) }),
+  reorder: (ids) => request('/domains/reorder', { method: 'POST', body: JSON.stringify({ ids }) }),
+  refresh: (id) => request(`/domains/${id}/refresh`, { method: 'POST' }),
+  remove: (id) => request(`/domains/${id}`, { method: 'DELETE' }),
+  getDict: () => request('/domains/dict'),
+  updateDict: (payload) => request('/domains/dict', { method: 'PUT', body: JSON.stringify(payload) }),
+  renameCategory: (oldName, newName) => request('/domains/categories/rename', { method: 'PUT', body: JSON.stringify({ oldName, newName }) }),
+  deleteCategory: (name) => request('/domains/categories/delete', { method: 'POST', body: JSON.stringify({ name }) })
+}

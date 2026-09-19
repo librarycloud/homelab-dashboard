@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { Bell, Close, Folder, Grid, House, Moon, Setting, Sunny, WarningFilled } from '@element-plus/icons-vue'
+import { Bell, Close, Folder, Grid, House, Moon, Setting, Sunny, WarningFilled, Link } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useServicesStore } from './stores/services'
 import { useSettingsStore } from './stores/settings'
@@ -21,7 +21,8 @@ const siteSubtitle = computed(() => settingsStore.siteSubtitle)
 const nav = [
   { label: '总览', path: '/', icon: House },
   { label: '我的服务', path: '/services', icon: Grid },
-  { label: '项目管理', path: '/projects', icon: Folder }
+  { label: '项目管理', path: '/projects', icon: Folder },
+  { label: '域名管理', path: '/domains', icon: Link }
 ]
 
 const notices = computed(() => servicesStore.services.flatMap((service) => {
