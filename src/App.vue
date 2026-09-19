@@ -21,7 +21,6 @@ const siteSubtitle = computed(() => settingsStore.siteSubtitle)
 const nav = [
   { label: '总览', path: '/', icon: House },
   { label: '我的服务', path: '/services', icon: Grid },
-  { label: '项目管理', path: '/projects', icon: Folder },
   { label: '域名管理', path: '/domains', icon: Link }
 ]
 

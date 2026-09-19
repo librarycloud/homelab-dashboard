@@ -503,4 +503,32 @@ function getDaysRemaining(dateStr) {
   border-radius: 6px;
   line-height: 1.5;
 }
+
+@media (max-width: 768px) {
+  header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .header-actions > * {
+    margin: 0 !important;
+  }
+  .header-actions .el-input {
+    width: 100% !important;
+  }
+  .header-actions .el-select {
+    width: 100% !important;
+  }
+  .header-actions .el-button {
+    flex: 1;
+    min-width: calc(33.33% - 8px);
+    margin-left: 0 !important;
+    padding: 8px 12px;
+  }
+}
 </style>

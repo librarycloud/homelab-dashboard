@@ -3,7 +3,6 @@ import { useAuthStore } from './stores/auth'
 
 const Dashboard = () => import('./views/Dashboard.vue')
 const Services = () => import('./views/Services.vue')
-const Projects = () => import('./views/Projects.vue')
 const Domains = () => import('./views/Domains.vue')
 const Login = () => import('./views/Login.vue')
 const Settings = () => import('./views/Settings.vue')
@@ -13,7 +12,6 @@ const router = createRouter({
   routes: [
     { path: '/', component: Dashboard },
     { path: '/services', component: Services },
-    { path: '/projects', component: Projects },
     { path: '/domains', component: Domains },
     { path: '/settings', component: Settings },
     { path: '/login', component: Login }
