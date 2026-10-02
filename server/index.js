@@ -12,7 +12,8 @@ import { refreshDomainInfo } from './domainChecks.js'
 const app = express()
 const port = process.env.API_PORT || 3000
 const defaultSessionTtlHours = 24
-const sessions = new Map()
+const sessionCache = new Map()
+let cachedSessionSecret = null
 let adminPassword = process.env.ADMIN_PASSWORD
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const clientDist = path.resolve(__dirname, '../dist')
@@ -41,11 +42,127 @@ function setSessionCookie(res, token, maxAge = defaultSessionTtlHours * 60 * 60 
   res.setHeader('Set-Cookie', `homelab_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(maxAge / 1000)}${secure}`)
 }
 
-function requireAuth(req, res, next) {
+async function getSessionSecret(forceRefresh = false) {
+  if (!forceRefresh && cachedSessionSecret) {
+    return cachedSessionSecret
+  }
+  const envSecret = process.env.SESSION_SECRET?.trim()
+  if (envSecret && envSecret !== 'replace_with_a_long_random_value') {
+    cachedSessionSecret = envSecret
+    return cachedSessionSecret
+  }
+  if (!isDbConfigured) {
+    if (!cachedSessionSecret) {
+      cachedSessionSecret = crypto.randomBytes(32).toString('hex')
+    }
+    return cachedSessionSecret
+  }
+  try {
+    const rows = await query('SELECT setting_value FROM `settings` WHERE setting_key = ?', ['session_secret'])
+    if (rows.length > 0 && rows[0].setting_value) {
+      try {
+        const parsed = JSON.parse(rows[0].setting_value)
+        cachedSessionSecret = typeof parsed === 'string' ? parsed : String(rows[0].setting_value)
+      } catch {
+        cachedSessionSecret = String(rows[0].setting_value)
+      }
+      return cachedSessionSecret
+    }
+    const newSecret = crypto.randomBytes(32).toString('hex')
+    await query(
+      'INSERT INTO `settings` (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)',
+      ['session_secret', JSON.stringify(newSecret)]
+    )
+    cachedSessionSecret = newSecret
+    return cachedSessionSecret
+  } catch (error) {
+    if (error.code !== 'ER_NO_SUCH_TABLE') {
+      console.error('Unable to read session_secret from settings table:', error.message)
+    }
+    if (!cachedSessionSecret) {
+      cachedSessionSecret = crypto.randomBytes(32).toString('hex')
+    }
+    return cachedSessionSecret
+  }
+}
+
+async function rotateSessionSecret() {
+  sessionCache.clear()
+  const newSecret = crypto.randomBytes(32).toString('hex')
+  cachedSessionSecret = newSecret
+  if (isDbConfigured) {
+    try {
+      await query(
+        'INSERT INTO `settings` (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)',
+        ['session_secret', JSON.stringify(newSecret)]
+      )
+    } catch (error) {
+      console.error('Unable to update session_secret in settings table:', error.message)
+    }
+  }
+  return newSecret
+}
+
+async function createSessionToken(username, ttlMs = defaultSessionTtlHours * 60 * 60 * 1000) {
+  const secret = await getSessionSecret()
+  const expiresAt = Date.now() + ttlMs
+  const payload = JSON.stringify({
+    u: username,
+    exp: expiresAt,
+    jti: crypto.randomBytes(12).toString('hex')
+  })
+  const payloadBase64 = Buffer.from(payload, 'utf8').toString('base64url')
+  const signature = crypto.createHmac('sha256', secret).update(payloadBase64).digest('base64url')
+  const token = `${payloadBase64}.${signature}`
+  sessionCache.set(token, { username, expiresAt })
+  return token
+}
+
+async function verifySessionToken(token) {
+  if (!token || typeof token !== 'string') return null
+  const cached = sessionCache.get(token)
+  if (cached) {
+    if (cached.expiresAt <= Date.now()) {
+      sessionCache.delete(token)
+      return null
+    }
+    return cached
+  }
+  const dotIndex = token.indexOf('.')
+  if (dotIndex <= 0) return null
+  const payloadBase64 = token.slice(0, dotIndex)
+  const signature = token.slice(dotIndex + 1)
+  if (!payloadBase64 || !signature) return null
+
+  const secret = await getSessionSecret()
+  if (!secret) return null
+
+  const expectedSignature = crypto.createHmac('sha256', secret).update(payloadBase64).digest('base64url')
+  const sigBuffer = Buffer.from(signature)
+  const expBuffer = Buffer.from(expectedSignature)
+  if (sigBuffer.length !== expBuffer.length || !crypto.timingSafeEqual(sigBuffer, expBuffer)) {
+    return null
+  }
+
+  try {
+    const payload = JSON.parse(Buffer.from(payloadBase64, 'base64url').toString('utf8'))
+    if (!payload || typeof payload !== 'object') return null
+    if (typeof payload.exp !== 'number' || payload.exp <= Date.now()) return null
+    if (!payload.u || typeof payload.u !== 'string') return null
+    const session = { username: payload.u, expiresAt: payload.exp }
+    sessionCache.set(token, session)
+    return session
+  } catch {
+    return null
+  }
+}
+
+async function requireAuth(req, res, next) {
   const token = parseCookies(req.headers.cookie).homelab_session
-  const session = token && sessions.get(token)
-  if (!session || session.expiresAt <= Date.now()) {
-    if (token) sessions.delete(token)
+  if (!token) return res.status(401).json({ message: '请先登录' })
+  const session = await verifySessionToken(token)
+  if (!session) {
+    sessionCache.delete(token)
     return res.status(401).json({ message: '请先登录' })
   }
   req.user = session
@@ -396,7 +513,6 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     void recordLoginAttempt(req, { username, success: false, failureReason: 'invalid_credentials' })
     return res.status(401).json({ message: '用户名或密码错误' })
   }
-  const token = crypto.randomBytes(32).toString('hex')
   let sessionTtlHours = defaultSessionTtlHours
   try {
     sessionTtlHours = (await readSettings()).sessionTtlHours
@@ -404,7 +520,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     if (error.code !== 'ER_NO_SUCH_TABLE') console.error('Unable to read session settings:', error.message)
   }
   const sessionTtl = sessionTtlHours * 60 * 60 * 1000
-  sessions.set(token, { username, expiresAt: Date.now() + sessionTtl })
+  const token = await createSessionToken(username, sessionTtl)
   setSessionCookie(res, token, sessionTtl)
   void recordLoginAttempt(req, { username, success: true })
   res.json({ ok: true, user: { username } })
@@ -414,7 +530,7 @@ app.get('/api/auth/me', requireAuth, (req, res) => res.json({ authenticated: tru
 
 app.post('/api/auth/logout', (req, res) => {
   const token = parseCookies(req.headers.cookie).homelab_session
-  if (token) sessions.delete(token)
+  if (token) sessionCache.delete(token)
   setSessionCookie(res, '', 0)
   res.json({ ok: true })
 })
@@ -462,6 +578,14 @@ app.post('/api/auth/password', passwordChangeLimiter, requireAuth, async (req, r
   } catch (error) {
     console.error('Unable to persist ADMIN_PASSWORD:', error.message)
   }
+  await rotateSessionSecret()
+  let sessionTtlHours = defaultSessionTtlHours
+  try {
+    sessionTtlHours = (await readSettings()).sessionTtlHours
+  } catch {}
+  const sessionTtl = sessionTtlHours * 60 * 60 * 1000
+  const token = await createSessionToken(req.user.username, sessionTtl)
+  setSessionCookie(res, token, sessionTtl)
   res.json({ ok: true, message: '密码已更新' })
 })
 
@@ -905,6 +1029,7 @@ const server = app.listen(port, async () => {
   try {
     await query('SELECT 1 AS connected')
     console.log(`HomeLab API listening on :${port}; MariaDB connected`)
+    await getSessionSecret().catch((err) => console.error('Failed to initialize session secret:', err.message))
   } catch (error) {
     console.error(`HomeLab API listening on :${port}; MariaDB connection failed`, error.message)
   }
