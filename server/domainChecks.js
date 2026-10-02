@@ -87,20 +87,25 @@ export async function fetchDomainInfo(domainName) {
     let registrarName = null
     let dnsProviderName = null
 
-    // .ch and .li block WHOIS port 43, we must use RDAP
-    if (tld === 'ch' || tld === 'li') {
-      const res = await fetch(`https://rdap.nic.ch/domain/${domainName}`)
+    // Some registries have retired WHOIS or block port 43, we must use RDAP
+    if (tld === 'ch' || tld === 'li' || tld === 'shop') {
+      const rdapBaseUrl = tld === 'shop' ? 'https://rdap.gmoregistry.net/rdap' : 'https://rdap.nic.ch'
+      const res = await fetch(`${rdapBaseUrl}/domain/${domainName}`)
       if (res.ok) {
         const json = await res.json()
         const registrarEntity = json.entities?.find(e => e.roles?.includes('registrar'))
         if (registrarEntity) {
-          const org = registrarEntity.vcardArray?.[1]?.find(v => v[0] === 'org')?.[3]
+          let org = registrarEntity.vcardArray?.[1]?.find(v => v[0] === 'org')?.[3]
+          if (!org) org = registrarEntity.vcardArray?.[1]?.find(v => v[0] === 'fn')?.[3]
           if (org) registrarName = org
         }
         if (json.nameservers && json.nameservers.length > 0) {
           dnsProviderName = json.nameservers.map(ns => ns.ldhName).join(', ')
         }
-        // .ch does not publicly disclose expiration dates
+        const expirationEvent = json.events?.find(e => e.eventAction === 'expiration')
+        if (expirationEvent && expirationEvent.eventDate) {
+          expirationDate = new Date(expirationEvent.eventDate)
+        }
       }
     } else {
       const options = {}
