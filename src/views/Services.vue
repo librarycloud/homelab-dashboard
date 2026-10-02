@@ -517,6 +517,8 @@ watch(() => route.query.edit, openEditFromRoute);
         ><el-form-item label="Docker"
           ><el-switch
             v-model="form.docker_enabled"
+            :active-value="1"
+            :inactive-value="0"
             active-text="已启用"
             inactive-text="未启用" /></el-form-item
         ><el-form-item label="Docker 容器"
@@ -547,6 +549,8 @@ watch(() => route.query.edit, openEditFromRoute);
         ><el-form-item label="收藏"
           ><el-switch
             v-model="form.favorite"
+            :active-value="1"
+            :inactive-value="0"
             active-text="已置顶"
             inactive-text="普通"
         /></el-form-item>
