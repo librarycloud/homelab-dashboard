@@ -76,6 +76,9 @@ const fallbackTldServers = {
   shop: 'whois.nic.shop',
   site: 'whois.nic.site',
   icu: 'whois.nic.icu',
+  cfd: 'whois.nic.cfd',
+  cyou: 'whois.nic.cyou',
+  sbs: 'whois.nic.sbs',
   de: 'whois.denic.de',
   hk: 'whois.hkirc.hk'
 }
