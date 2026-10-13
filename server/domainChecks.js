@@ -83,6 +83,20 @@ const fallbackTldServers = {
   hk: 'whois.hkirc.hk'
 }
 
+function parseWhoisDate(rawDate) {
+  if (!rawDate) return null
+  const str = String(rawDate).trim()
+  // Handle DD-MM-YYYY, DD/MM/YYYY, DD.MM.YYYY formats (used by .hk, etc.)
+  const dmyMatch = str.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})(?:\s+.*)?$/)
+  if (dmyMatch) {
+    const [, day, month, year] = dmyMatch
+    const d = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T00:00:00Z`)
+    if (!isNaN(d)) return d
+  }
+  const d = new Date(str)
+  return isNaN(d) ? null : d
+}
+
 export async function fetchDomainInfo(domainName) {
   try {
     const tld = domainName.split('.').pop().toLowerCase()
@@ -107,7 +121,7 @@ export async function fetchDomainInfo(domainName) {
         }
         const expirationEvent = json.events?.find(e => e.eventAction === 'expiration')
         if (expirationEvent && expirationEvent.eventDate) {
-          expirationDate = new Date(expirationEvent.eventDate)
+          expirationDate = parseWhoisDate(expirationEvent.eventDate)
         }
       }
     } else {
@@ -123,11 +137,11 @@ export async function fetchDomainInfo(domainName) {
         if (!serverData) continue
 
         if (serverData['Expiry Date']) {
-          expirationDate = new Date(serverData['Expiry Date'])
+          expirationDate = parseWhoisDate(serverData['Expiry Date'])
         } else if (serverData['Registry Expiry Date']) {
-          expirationDate = new Date(serverData['Registry Expiry Date'])
+          expirationDate = parseWhoisDate(serverData['Registry Expiry Date'])
         } else if (serverData['Registrar Registration Expiration Date']) {
-          expirationDate = new Date(serverData['Registrar Registration Expiration Date'])
+          expirationDate = parseWhoisDate(serverData['Registrar Registration Expiration Date'])
         }
 
         if (serverData['Registrar']) {
@@ -150,7 +164,7 @@ export async function fetchDomainInfo(domainName) {
           let capturing = false
           for (const line of textLines) {
             const l = line.trim()
-            if (l.toLowerCase() === 'cdn variant / punycode' || l.toLowerCase() === 'name servers:') {
+            if (l.toLowerCase() === 'cdn variant / punycode' || l.toLowerCase() === 'name servers:' || l.toLowerCase() === 'name servers information:') {
               capturing = true
               continue
             }
