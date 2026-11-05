@@ -9,6 +9,7 @@ import { pool, query, isDbConfigured, missingDbEnv } from './db.js'
 import { checkVersion, refreshServiceStatus, mapConcurrent } from './serviceChecks.js'
 import { refreshDomainInfo } from './domainChecks.js'
 import { runMigrations } from './migrate.js'
+import { sendTestMessage, getNotificationLogs, checkAndSendAllNotifications } from './notifications.js'
 
 const app = express()
 const port = process.env.API_PORT || 3000
@@ -186,7 +187,7 @@ const numericFields = {
   version_status: [0, 1, 2, 3],
   docker_status: [0, 1, 2, 3, 4]
 }
-const settingKeys = ['site_name', 'site_subtitle', 'primary_color', 'checking_enabled', 'check_interval', 'version_checking_enabled', 'version_check_interval_hours', 'version_check_interval', 'session_ttl_hours', 'notifications', 'service_categories']
+const settingKeys = ['site_name', 'site_subtitle', 'primary_color', 'checking_enabled', 'check_interval', 'version_checking_enabled', 'version_check_interval_hours', 'version_check_interval', 'session_ttl_hours', 'notifications', 'telegram', 'service_categories']
 const defaultSettings = Object.freeze({
   siteName: 'HomeLab',
   siteSubtitle: 'CONTROL CENTER',
@@ -197,11 +198,25 @@ const defaultSettings = Object.freeze({
   versionCheckInterval: 1,
   sessionTtlHours: defaultSessionTtlHours,
   notifications: { error: true, update: true, docker: false },
+  telegram: {
+    enabled: false,
+    botToken: '',
+    chatId: '',
+    notifyReminders: true,
+    notifyDomains: true,
+    notifyServices: false,
+    remindIntervalDays: 1
+  },
   categories: ['监控', '存储', '媒体', '开发', '网络', '安全']
 })
 
 function cloneDefaultSettings() {
-  return { ...defaultSettings, notifications: { ...defaultSettings.notifications }, categories: [...defaultSettings.categories] }
+  return {
+    ...defaultSettings,
+    notifications: { ...defaultSettings.notifications },
+    telegram: { ...defaultSettings.telegram },
+    categories: [...defaultSettings.categories]
+  }
 }
 
 function normalizeSettingText(value, fallback) {
@@ -217,6 +232,19 @@ function normalizePrimaryColor(value) {
 function normalizeCategories(value) {
   if (!Array.isArray(value)) return [...defaultSettings.categories]
   return [...new Set(value.map((item) => String(item ?? '').trim().slice(0, 50)).filter(Boolean))].slice(0, 50)
+}
+
+function normalizeTelegramSettings(value = {}) {
+  const tg = value && typeof value === 'object' ? value : {}
+  return {
+    enabled: typeof tg.enabled === 'boolean' ? tg.enabled : defaultSettings.telegram.enabled,
+    botToken: typeof tg.botToken === 'string' ? tg.botToken.trim() : defaultSettings.telegram.botToken,
+    chatId: typeof tg.chatId === 'string' || typeof tg.chatId === 'number' ? String(tg.chatId).trim() : defaultSettings.telegram.chatId,
+    notifyReminders: typeof tg.notifyReminders === 'boolean' ? tg.notifyReminders : defaultSettings.telegram.notifyReminders,
+    notifyDomains: typeof tg.notifyDomains === 'boolean' ? tg.notifyDomains : defaultSettings.telegram.notifyDomains,
+    notifyServices: typeof tg.notifyServices === 'boolean' ? tg.notifyServices : defaultSettings.telegram.notifyServices,
+    remindIntervalDays: [1, 2, 3, 7, 14, 30].includes(Number(tg.remindIntervalDays)) ? Number(tg.remindIntervalDays) : defaultSettings.telegram.remindIntervalDays
+  }
 }
 
 function normalizeSettings(value = {}) {
@@ -235,6 +263,7 @@ function normalizeSettings(value = {}) {
       update: typeof notifications.update === 'boolean' ? notifications.update : defaultSettings.notifications.update,
       docker: typeof notifications.docker === 'boolean' ? notifications.docker : defaultSettings.notifications.docker
     },
+    telegram: normalizeTelegramSettings(value.telegram),
     categories: normalizeCategories(value.categories)
   }
 }
@@ -261,6 +290,7 @@ async function readSettings(forceRefresh = false) {
     versionCheckInterval: values.version_check_interval_hours ?? ({ 30: 1, 60: 1, 180: 3 }[Number(values.version_check_interval)] || values.version_check_interval),
     sessionTtlHours: values.session_ttl_hours,
     notifications: values.notifications,
+    telegram: values.telegram,
     categories: values.service_categories
   })
   return cachedSettings
@@ -278,6 +308,7 @@ function settingsPayload(body, current) {
   if (body.versionCheckInterval !== undefined) next.versionCheckInterval = body.versionCheckInterval
   if (body.sessionTtlHours !== undefined) next.sessionTtlHours = body.sessionTtlHours
   if (body.notifications !== undefined) next.notifications = { ...current.notifications, ...body.notifications }
+  if (body.telegram !== undefined) next.telegram = { ...current.telegram, ...body.telegram }
   if (body.categories !== undefined) next.categories = body.categories
   return normalizeSettings(next)
 }
@@ -293,6 +324,7 @@ async function writeSettings(settings) {
     ['version_check_interval_hours', settings.versionCheckInterval],
     ['session_ttl_hours', settings.sessionTtlHours],
     ['notifications', settings.notifications],
+    ['telegram', settings.telegram],
     ['service_categories', settings.categories]
   ]
   await query(
@@ -411,6 +443,25 @@ async function runScheduledDomainCheck() {
 
 const domainCheckTimer = setInterval(() => { void runScheduledDomainCheck() }, 60 * 60 * 1000)
 domainCheckTimer.unref?.()
+
+let scheduledNotificationRunning = false
+async function runScheduledNotifications() {
+  if (scheduledNotificationRunning) return
+  try {
+    scheduledNotificationRunning = true
+    const settings = await readSettings()
+    await checkAndSendAllNotifications(settings)
+  } catch (error) {
+    if (error.code !== 'ER_NO_SUCH_TABLE' && error.code !== 'DATABASE_NOT_CONFIGURED') {
+      console.error('Scheduled notification error:', error.message)
+    }
+  } finally {
+    scheduledNotificationRunning = false
+  }
+}
+
+const notificationTimer = setInterval(() => { void runScheduledNotifications() }, 30 * 60 * 1000)
+notificationTimer.unref?.()
 
 function sendDatabaseError(res, error) {
   console.error(error)
@@ -556,6 +607,29 @@ app.put('/api/settings', requireAuth, async (req, res) => {
     if (error.code === 'ER_NO_SUCH_TABLE') {
       return res.status(503).json({ message: '设置表尚未创建，请执行 server/migrations/005_app_settings.sql' })
     }
+    sendDatabaseError(res, error)
+  }
+})
+
+app.post('/api/notifications/test', requireAuth, async (req, res) => {
+  try {
+    const currentSettings = await readSettings()
+    const botToken = req.body?.botToken || currentSettings.telegram?.botToken
+    const chatId = req.body?.chatId || currentSettings.telegram?.chatId
+    const apiBase = req.body?.apiBase || process.env.TELEGRAM_API_BASE
+    const result = await sendTestMessage({ botToken, chatId, apiBase })
+    res.json(result)
+  } catch (error) {
+    res.status(400).json({ message: error.message || '发送测试消息失败' })
+  }
+})
+
+app.get('/api/notifications/logs', requireAuth, async (req, res) => {
+  try {
+    const limit = Number(req.query?.limit) || 20
+    const logs = await getNotificationLogs(limit)
+    res.json(logs)
+  } catch (error) {
     sendDatabaseError(res, error)
   }
 })
@@ -1160,6 +1234,7 @@ const server = app.listen(port, async () => {
     console.log(`HomeLab API listening on :${port}; MariaDB connected`)
     await runMigrations().catch((err) => console.error('[Migrate] 自动迁移异常:', err.message))
     await getSessionSecret().catch((err) => console.error('Failed to initialize session secret:', err.message))
+    setTimeout(() => { void runScheduledNotifications() }, 5000)
   } catch (error) {
     console.error(`HomeLab API listening on :${port}; MariaDB connection failed`, error.message)
   }
@@ -1167,6 +1242,8 @@ const server = app.listen(port, async () => {
 
 async function shutdown() {
   clearInterval(versionCheckTimer)
+  clearInterval(domainCheckTimer)
+  clearInterval(notificationTimer)
   if (pool) await pool.end().catch(() => {})
   server.close(() => process.exit(0))
 }

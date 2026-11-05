@@ -19,6 +19,7 @@ export const useSettingsStore = defineStore('settings', {
     versionCheckInterval: (state) => state.settings.versionCheckInterval,
     sessionTtlHours: (state) => state.settings.sessionTtlHours,
     notifications: (state) => state.settings.notifications,
+    telegram: (state) => state.settings.telegram,
     categories: (state) => state.settings.categories
   },
   actions: {

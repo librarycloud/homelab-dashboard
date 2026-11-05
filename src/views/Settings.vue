@@ -1,11 +1,11 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Download, Lock, Bell, Refresh, Upload, Monitor, CircleCheck, Warning, InfoFilled, Setting, Brush, UserFilled } from '@element-plus/icons-vue'
+import { Download, Lock, Bell, Refresh, Upload, Monitor, CircleCheck, Warning, InfoFilled, Setting, Brush, UserFilled, Promotion, Tickets } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import 'element-plus/es/components/message/style/css'
 import 'element-plus/es/components/message-box/style/css'
-import { authApi, systemApi } from '../api'
+import { authApi, systemApi, notificationApi } from '../api'
 import { applySettings, DEFAULT_SETTINGS } from '../appSettings'
 import { applyPrimaryColor, normalizePrimary, PRIMARY_PRESETS } from '../theme'
 import { useAuthStore } from '../stores/auth'
@@ -24,6 +24,12 @@ const checkInterval = ref(DEFAULT_SETTINGS.checkInterval)
 const versionChecking = ref(DEFAULT_SETTINGS.versionChecking)
 const versionCheckInterval = ref(DEFAULT_SETTINGS.versionCheckInterval)
 const notifications = reactive({ ...DEFAULT_SETTINGS.notifications })
+const telegram = reactive({ ...DEFAULT_SETTINGS.telegram })
+const savingTelegram = ref(false)
+const testingTelegram = ref(false)
+const notificationLogs = ref([])
+const loadingLogs = ref(false)
+const showLogsDialog = ref(false)
 const system = ref(null)
 const importInput = ref(null)
 const loadingSystem = ref(false)
@@ -49,6 +55,7 @@ function applySettingsToView(value) {
   versionCheckInterval.value = settings.versionCheckInterval
   sessionTtlHours.value = settings.sessionTtlHours
   Object.assign(notifications, settings.notifications)
+  if (settings.telegram) Object.assign(telegram, settings.telegram)
   categories.value = settings.categories
   return settings
 }
@@ -137,6 +144,44 @@ async function loadLoginAudit() {
   loadingAudit.value = true
   try { loginAudit.value = await systemApi.loginAudit(10) } catch (error) { ElMessage.error(error.message) } finally { loadingAudit.value = false }
 }
+async function loadNotificationLogs() {
+  loadingLogs.value = true
+  try {
+    notificationLogs.value = await notificationApi.getLogs(20)
+  } catch (error) {
+    console.warn('获取通知日志失败:', error.message)
+  } finally {
+    loadingLogs.value = false
+  }
+}
+async function saveTelegramSettings() {
+  savingTelegram.value = true
+  try {
+    await persistSettings({ telegram: { ...telegram } }, 'Telegram 通知设置已保存')
+  } catch (error) {
+    ElMessage.error(error.message || '保存设置失败')
+  } finally {
+    savingTelegram.value = false
+  }
+}
+async function testTelegramMessage() {
+  if (!telegram.botToken && !telegram.chatId) {
+    return ElMessage.warning('请先输入 Bot Token 和 Chat ID')
+  }
+  testingTelegram.value = true
+  try {
+    const res = await notificationApi.testTelegram({
+      botToken: telegram.botToken,
+      chatId: telegram.chatId
+    })
+    ElMessage.success(res.message || '测试消息发送成功！')
+    void loadNotificationLogs()
+  } catch (error) {
+    ElMessage.error(error.message || '测试消息发送失败')
+  } finally {
+    testingTelegram.value = false
+  }
+}
 function formatUptime(seconds) { const total = Math.floor(seconds || 0); return `${Math.floor(total / 86400)} 天 ${Math.floor(total / 3600) % 24} 小时 ${Math.floor(total / 60) % 60} 分钟` }
 function formatAuditTime(value) { return value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'short', timeStyle: 'medium' }).format(new Date(value)) : '-' }
 function failureReasonText(reason) {
@@ -145,7 +190,7 @@ function failureReasonText(reason) {
 function auditIpTitle(entry) {
   return [`识别地址：${entry.ipAddress}`, entry.remoteAddress && `直连地址：${entry.remoteAddress}`, entry.proxyChain && `可信代理链：${entry.proxyChain}`].filter(Boolean).join('\n')
 }
-onMounted(() => { void Promise.all([loadSettings(), loadSystem(), loadLoginAudit()]) })
+onMounted(() => { void Promise.all([loadSettings(), loadSystem(), loadLoginAudit(), loadNotificationLogs()]) })
 </script>
 
 <template>
@@ -157,10 +202,129 @@ onMounted(() => { void Promise.all([loadSettings(), loadSystem(), loadLoginAudit
     <section class="settings-panel"><div class="settings-heading"><div class="settings-icon service"><el-icon><Refresh /></el-icon></div><div><h2>服务检查</h2><span>控制服务状态和版本检测频率</span></div></div><div class="setting-row"><div><strong>启用自动状态检查</strong><p>在服务列表中定期刷新服务运行状态</p></div><el-switch v-model="checking" /></div><div class="setting-row"><div><strong>状态检查间隔</strong><p>自动刷新服务状态的时间间隔（分钟）</p></div><el-input-number v-model="checkInterval" :min="1" :max="1440" :step="1" controls-position="right" aria-label="状态检查间隔（分钟）" /></div><div class="setting-row"><div><strong>定时检测版本</strong><p>由服务端后台自动检测所有服务的版本</p></div><el-switch v-model="versionChecking" /></div><div class="setting-row"><div><strong>版本检测间隔</strong><p>自动检测 GitHub、Docker 等版本来源的时间间隔（小时）</p></div><el-input-number v-model="versionCheckInterval" :min="1" :max="168" :step="1" controls-position="right" aria-label="版本检测间隔（小时）" /></div><el-button class="settings-save-button" type="primary" @click="savePreferences">保存检查设置</el-button></section>
     <section class="settings-panel"><div class="settings-heading"><div class="settings-icon service"><el-icon><Setting /></el-icon></div><div><h2>服务分类</h2><span>维护服务编辑时可选择的固定分类</span></div></div><div class="category-manager"><div class="category-add"><el-input v-model="newCategory" placeholder="输入分类名称" @keyup.enter="addCategory" /><el-button type="primary" @click="addCategory">添加</el-button></div><div class="category-list"><el-tag v-for="category in categories" :key="category" closable @close="removeCategory(category)">{{ category }}</el-tag></div></div></section>
     <section class="settings-panel"><div class="settings-heading"><div class="settings-icon notice"><el-icon><Bell /></el-icon></div><div><h2>通知设置</h2><span>选择需要关注的系统事件</span></div></div><div class="setting-row"><div><strong>异常服务</strong><p>服务离线或进入异常状态时提醒</p></div><el-switch v-model="notifications.error" /></div><div class="setting-row"><div><strong>版本更新</strong><p>检测到可用新版本时提醒</p></div><el-switch v-model="notifications.update" /></div><div class="setting-row"><div><strong>Docker 状态</strong><p>容器停止或不健康时提醒</p></div><el-switch v-model="notifications.docker" /></div><el-button class="settings-save-button" type="primary" @click="savePreferences">保存通知设置</el-button></section>
+    <section class="settings-panel telegram-panel">
+      <div class="settings-heading">
+        <div class="settings-icon telegram"><el-icon><Promotion /></el-icon></div>
+        <div>
+          <h2>Telegram 提醒通知</h2>
+          <span>配置 Telegram Bot 推送待办事项、域名到期及服务状态</span>
+        </div>
+        <el-button class="system-refresh" text :loading="loadingLogs" title="查看发送记录" @click="showLogsDialog = true">
+          <el-icon><Tickets /></el-icon>
+        </el-button>
+      </div>
+
+      <div class="setting-row">
+        <div>
+          <strong>启用 Telegram 提醒</strong>
+          <p>开启后将按设定频次推送通知至指定群组或私聊</p>
+        </div>
+        <el-switch v-model="telegram.enabled" />
+      </div>
+
+      <el-form label-position="top" class="settings-form telegram-form" @submit.prevent="saveTelegramSettings">
+        <el-form-item label="Bot Token">
+          <el-input
+            v-model="telegram.botToken"
+            placeholder="例如：123456789:ABCdef-ghijklmn..."
+            show-password
+            clearable
+          />
+        </el-form-item>
+
+        <el-form-item label="Chat ID">
+          <el-input
+            v-model="telegram.chatId"
+            placeholder="例如：123456789 或 -100123456789"
+            clearable
+          />
+        </el-form-item>
+
+        <el-form-item label="提醒发送周期 / 频次">
+          <el-select v-model="telegram.remindIntervalDays" style="width: 100%;">
+            <el-option :value="1" label="每天 1 次 (推荐)" />
+            <el-option :value="2" label="每 2 天 1 次" />
+            <el-option :value="3" label="每 3 天 1 次" />
+            <el-option :value="7" label="每周 1 次 (每 7 天)" />
+            <el-option :value="14" label="每两周 1 次 (每 14 天)" />
+            <el-option :value="30" label="每月 1 次 (每 30 天)" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+
+      <div class="setting-subheading">提醒事件类型</div>
+      <div class="setting-row">
+        <div>
+          <strong>待办事项提醒</strong>
+          <p>待办进入办理期、临近截止或逾期时推送</p>
+        </div>
+        <el-switch v-model="telegram.notifyReminders" />
+      </div>
+      <div class="setting-row">
+        <div>
+          <strong>域名到期提醒</strong>
+          <p>域名到期前 30 天或 7 天内推送提醒</p>
+        </div>
+        <el-switch v-model="telegram.notifyDomains" />
+      </div>
+      <div class="setting-row">
+        <div>
+          <strong>服务故障提醒</strong>
+          <p>服务离线或容器异常时推送告警</p>
+        </div>
+        <el-switch v-model="telegram.notifyServices" />
+      </div>
+
+      <div class="backup-actions" style="margin-top: 14px;">
+        <el-button type="primary" :loading="savingTelegram" @click="saveTelegramSettings">保存设置</el-button>
+        <el-button :loading="testingTelegram" @click="testTelegramMessage">发送测试消息</el-button>
+        <el-button text @click="showLogsDialog = true">查看记录 ({{ notificationLogs.length }})</el-button>
+      </div>
+
+      <div class="settings-note">
+        <el-icon><InfoFilled /></el-icon>
+        防扰机制：距离截止日 ≤ 3 天或逾期时自动升级为每日提醒；其他时期按选定频次触发。
+      </div>
+    </section>
     <section class="settings-panel backup-panel"><div class="settings-heading"><div class="settings-icon backup"><el-icon><Download /></el-icon></div><div><h2>备份恢复</h2><span>导出或导入服务配置 JSON</span></div></div><div class="backup-actions"><el-button type="primary" @click="exportBackup"><el-icon><Download /></el-icon>导出配置</el-button><el-button @click="chooseImport"><el-icon><Upload /></el-icon>导入配置</el-button><input ref="importInput" type="file" accept="application/json" hidden @change="importBackup" /></div><div class="settings-note"><el-icon><Warning /></el-icon>导入会按服务 ID 更新已有数据，请先保留一份当前备份。</div></section>
     <section class="settings-panel system-panel"><div class="settings-heading"><div class="settings-icon system"><el-icon><Monitor /></el-icon></div><div><h2>系统信息</h2><span>查看当前 API 和数据库运行状态</span></div><el-button class="system-refresh" text :loading="loadingSystem" title="刷新系统信息" @click="loadSystem"><el-icon><Refresh /></el-icon></el-button></div><div v-if="system" class="system-info-grid"><div><span>应用版本</span><strong>v{{ system.appVersion }}</strong></div><div><span>Node.js</span><strong>{{ system.nodeVersion }}</strong></div><div><span>运行时间</span><strong>{{ formatUptime(system.uptime) }}</strong></div><div><span>数据库</span><strong :class="system.database === 'connected' ? 'healthy' : 'unhealthy'"><el-icon><CircleCheck v-if="system.database === 'connected'" /><Warning v-else /></el-icon>{{ system.database === 'connected' ? '已连接' : '未连接' }}</strong></div><div><span>API 端口</span><strong>{{ system.apiPort }}</strong></div><div><span>运行平台</span><strong>{{ system.platform }}</strong></div></div><el-empty v-else description="暂无系统信息" :image-size="60" /></section>
     <section class="settings-panel login-audit-panel"><div class="settings-heading"><div class="settings-icon audit"><el-icon><UserFilled /></el-icon></div><div><h2>登录日志</h2><span>最近 10 次登录结果和可信代理来源</span></div><el-button class="system-refresh" text :loading="loadingAudit" title="刷新登录日志" @click="loadLoginAudit"><el-icon><Refresh /></el-icon></el-button></div><div class="login-audit-scroll"><table class="login-audit-table"><thead><tr><th>结果</th><th>用户名</th><th>来源 IP</th><th>时间</th><th>失败原因</th><th>User-Agent</th></tr></thead><tbody><tr v-for="entry in loginAudit" :key="entry.id"><td><span class="audit-status" :class="entry.success ? 'success' : 'failure'"><el-icon><CircleCheck v-if="entry.success" /><Warning v-else /></el-icon>{{ entry.success ? '成功' : '失败' }}</span></td><td class="audit-username">{{ entry.username || '(空)' }}</td><td><span class="audit-ip" :title="auditIpTitle(entry)">{{ entry.ipAddress }}</span></td><td class="audit-time">{{ formatAuditTime(entry.createdAt) }}</td><td>{{ entry.success ? '-' : failureReasonText(entry.failureReason) }}</td><td><el-tooltip :content="entry.userAgent || '-'" effect="light" placement="top" popper-class="audit-agent-tooltip" :show-after="0" append-to="body"><span class="audit-agent" :title="entry.userAgent || '-'" tabindex="0">{{ entry.userAgent || '-' }}</span></el-tooltip></td></tr><tr v-if="!loginAudit.length && !loadingAudit"><td colspan="6" class="audit-empty">暂无登录记录</td></tr></tbody></table></div></section>
     <section class="settings-panel session-panel"><div class="settings-heading"><div class="settings-icon security"><el-icon><Lock /></el-icon></div><div><h2>会话有效期</h2><span>设置新登录会话和 Cookie 的有效时间</span></div></div><div class="setting-row session-setting-row"><div><strong>有效期</strong><p>可设置 1 到 720 小时，修改后从下一次登录开始生效</p></div><el-input-number v-model="sessionTtlHours" :min="1" :max="720" :step="1" :precision="0" controls-position="right" aria-label="会话有效期（小时）" /></div><div class="backup-actions"><el-button type="primary" @click="saveSessionLifetime">保存会话设置</el-button><el-button type="danger" plain @click="logout">退出登录</el-button></div></section>
   </div>
+
+  <el-dialog v-model="showLogsDialog" title="Telegram 通知记录 (最新 20 条)" width="780px" append-to-body destroy-on-close>
+    <div style="display: flex; justify-content: flex-end; margin-bottom: 12px;">
+      <el-button text :loading="loadingLogs" @click="loadNotificationLogs"><el-icon><Refresh /></el-icon> 刷新记录</el-button>
+    </div>
+    <el-table :data="notificationLogs" v-loading="loadingLogs" style="width: 100%; font-size: 12px;" max-height="450">
+      <el-table-column prop="status" label="状态" width="80">
+        <template #default="{ row }">
+          <el-tag :type="row.status === 'success' ? 'success' : 'danger'" size="small">
+            {{ row.status === 'success' ? '成功' : '失败' }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="category" label="类型" width="95">
+        <template #default="{ row }">
+          <span v-if="row.category === 'reminder'">待办提醒</span>
+          <span v-else-if="row.category === 'domain'">域名到期</span>
+          <span v-else-if="row.category === 'service'">服务异常</span>
+          <span v-else-if="row.category === 'test'">测试通知</span>
+          <span v-else>{{ row.category }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="title" label="通知标题" min-width="160" show-overflow-tooltip />
+      <el-table-column prop="sent_at" label="发送时间" width="160">
+        <template #default="{ row }">
+          {{ formatAuditTime(row.sent_at) }}
+        </template>
+      </el-table-column>
+      <el-table-column prop="error_message" label="失败原因" min-width="140" show-overflow-tooltip>
+        <template #default="{ row }">
+          <span :style="{ color: row.status === 'failed' ? '#ed7777' : 'inherit' }">{{ row.error_message || '-' }}</span>
+        </template>
+      </el-table-column>
+    </el-table>
+  </el-dialog>
 </template>
 <style src="../styles/settings.css"></style>

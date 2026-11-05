@@ -60,3 +60,8 @@ export const reminderApi = {
   reorder: (ids) => request('/reminders/reorder', { method: 'POST', body: JSON.stringify({ ids }) }),
   remove: (id) => request(`/reminders/${id}`, { method: 'DELETE' })
 }
+
+export const notificationApi = {
+  testTelegram: (payload = {}) => request('/notifications/test', { method: 'POST', body: JSON.stringify(payload) }),
+  getLogs: (limit = 20) => request(`/notifications/logs?limit=${limit}`)
+}

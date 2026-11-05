@@ -81,6 +81,12 @@ export async function runMigrations({ silent = false } = {}) {
           [process.env.DB_NAME]
         )
         if (colRows.length > 0) alreadySatisfied = true
+      } else if (file.startsWith('009_')) {
+        const tblRows = await conn.query(
+          `SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'notification_logs'`,
+          [process.env.DB_NAME]
+        )
+        if (tblRows.length > 0) alreadySatisfied = true
       }
 
       if (!alreadySatisfied) {
