@@ -101,6 +101,8 @@ CREATE TABLE IF NOT EXISTS reminders (
   due_date DATETIME NULL,
   remind_days_before INT UNSIGNED NOT NULL DEFAULT 30,
   status VARCHAR(10) NOT NULL DEFAULT 'pending',
+  last_completed_cycle VARCHAR(20) NULL DEFAULT NULL,
+  last_completed_at DATETIME NULL DEFAULT NULL,
   action_url VARCHAR(500) NULL,
   action_label VARCHAR(100) NULL,
   sort_order INT NOT NULL DEFAULT 0,

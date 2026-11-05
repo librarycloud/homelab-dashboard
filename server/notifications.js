@@ -78,79 +78,108 @@ export async function hasNotifiedRecently(targetType, targetId, hours = 24) {
 /**
  * Calculate window information for reminder (mirrors Reminders.vue)
  */
-function getPeriodInfo(r) {
+// ── Window & Cycle calculation for notifications ────────
+function getCycleInfo(r) {
   const now = new Date()
   const currentYear = now.getFullYear()
+  const currentMonth = now.getMonth()
   const msPerDay = 86400000
 
   if (r.recur_type === 'once') {
-    if (!r.due_date) return null
     const start = r.start_date ? new Date(r.start_date) : null
-    const end = new Date(r.due_date)
-    end.setHours(23, 59, 59, 999)
-    return { start, end, isPeriod: Boolean(start) }
+    let end = r.due_date ? new Date(r.due_date) : null
+    if (end) end.setHours(23, 59, 59, 999)
+    const isDone = r.status === 'done' || r.last_completed_cycle === 'once'
+    const isOverdue = !isDone && end && now.getTime() > end.getTime()
+    return { cycleKey: 'once', cycleLabel: '', start, end, isPeriod: Boolean(start), isDone, isOverdue }
   }
 
   if (r.recur_type === 'yearly' && r.recur_month && r.recur_day) {
     const hasStart = Boolean(r.start_month && r.start_day)
     const isCrossYear = hasStart && (r.start_month > r.recur_month || (r.start_month === r.recur_month && r.start_day > r.recur_day))
+    const deadlineCurrYear = new Date(currentYear, r.recur_month - 1, r.recur_day, 23, 59, 59)
+    const isCurrYearDone = r.last_completed_cycle === String(currentYear) ||
+      (r.status === 'done' && (!r.last_completed_cycle || r.last_completed_cycle === String(currentYear)))
 
-    let year = currentYear
-    let start = hasStart ? new Date(year, r.start_month - 1, r.start_day, 0, 0, 0) : null
-    let end = new Date(year, r.recur_month - 1, r.recur_day, 23, 59, 59)
-
-    if (isCrossYear) {
-      if (now <= end) {
-        start = new Date(year - 1, r.start_month - 1, r.start_day, 0, 0, 0)
-      } else {
-        start = new Date(year, r.start_month - 1, r.start_day, 0, 0, 0)
-        end = new Date(year + 1, r.recur_month - 1, r.recur_day, 23, 59, 59)
-      }
-    } else {
-      if (now > end) {
-        if (r.status !== 'done' && (now.getTime() - end.getTime()) < 60 * msPerDay) {
-          // Keep current year window as overdue
-        } else {
-          year += 1
-          if (hasStart) start = new Date(year, r.start_month - 1, r.start_day, 0, 0, 0)
-          end = new Date(year, r.recur_month - 1, r.recur_day, 23, 59, 59)
-        }
-      }
+    let targetYear = currentYear
+    if (now.getTime() > deadlineCurrYear.getTime()) {
+      targetYear = isCurrYearDone ? currentYear + 1 : currentYear
     }
-    return { start, end, isPeriod: hasStart }
+
+    let end = new Date(targetYear, r.recur_month - 1, r.recur_day, 23, 59, 59)
+    let start = null
+    if (hasStart) {
+      const startYear = isCrossYear ? targetYear - 1 : targetYear
+      start = new Date(startYear, r.start_month - 1, r.start_day, 0, 0, 0)
+    }
+
+    const cycleKey = String(targetYear)
+    const cycleLabel = `${targetYear}年`
+    let isDone = r.last_completed_cycle === cycleKey
+    if (!isDone && isCurrYearDone && start && now.getTime() < start.getTime()) {
+      isDone = true
+    }
+    const isOverdue = !isDone && now.getTime() > end.getTime()
+
+    return { cycleKey, cycleLabel, targetYear, start, end, isPeriod: hasStart, isDone, isOverdue }
   }
 
   if (r.recur_type === 'monthly' && r.recur_day) {
-    let y = now.getFullYear()
-    let m = now.getMonth()
     const hasStart = Boolean(r.start_day)
-    let start = hasStart ? new Date(y, m, r.start_day, 0, 0, 0) : null
-    let end = new Date(y, m, r.recur_day, 23, 59, 59)
-    if (now > end) {
-      if (r.status !== 'done' && (now.getTime() - end.getTime()) < 15 * msPerDay) {
-        // Overdue
-      } else {
-        m += 1
-        if (hasStart) start = new Date(y, m, r.start_day, 0, 0, 0)
-        end = new Date(y, m, r.recur_day, 23, 59, 59)
+    const fmtMonthCycle = (y, m) => `${y}-${String(m + 1).padStart(2, '0')}`
+    const currCycleKey = fmtMonthCycle(currentYear, currentMonth)
+    const deadlineCurrMonth = new Date(currentYear, currentMonth, r.recur_day, 23, 59, 59)
+    const isCurrMonthDone = r.last_completed_cycle === currCycleKey ||
+      (r.status === 'done' && (!r.last_completed_cycle || r.last_completed_cycle === currCycleKey))
+
+    let targetY = currentYear
+    let targetM = currentMonth
+    if (now.getTime() > deadlineCurrMonth.getTime()) {
+      if (isCurrMonthDone) {
+        targetM += 1
+        if (targetM > 11) { targetM = 0; targetY += 1 }
       }
     }
-    return { start, end, isPeriod: hasStart }
+
+    const cycleKey = fmtMonthCycle(targetY, targetM)
+    const cycleLabel = `${targetM + 1}月`
+    const end = new Date(targetY, targetM, r.recur_day, 23, 59, 59)
+    const start = hasStart ? new Date(targetY, targetM, r.start_day, 0, 0, 0) : null
+    let isDone = r.last_completed_cycle === cycleKey
+    if (!isDone && isCurrMonthDone && start && now.getTime() < start.getTime()) {
+      isDone = true
+    }
+    const isOverdue = !isDone && now.getTime() > end.getTime()
+
+    return { cycleKey, cycleLabel, start, end, isPeriod: hasStart, isDone, isOverdue }
   }
 
   return null
 }
 
-function getReminderState(r) {
-  if (r.status === 'done') return null
+function getPeriodInfo(r) {
+  return getCycleInfo(r)
+}
 
-  const win = getPeriodInfo(r)
+function getReminderState(r) {
+  const win = getCycleInfo(r)
   if (!win || !win.end) return null
+  if (win.isDone) return null
 
   const now = Date.now()
   const msPerDay = 86400000
 
-  // 1. Period with start & end
+  // 1. Overdue
+  if (win.isOverdue) {
+    const cyclePrefix = win.cycleLabel ? `${win.cycleLabel} ` : ''
+    return {
+      isDue: true,
+      isUrgent: true,
+      label: `${cyclePrefix}已逾期！请尽快办理`
+    }
+  }
+
+  // 2. Period with start & end
   if (win.start) {
     const daysToStart = Math.ceil((win.start.getTime() - now) / msPerDay)
     const daysToEnd = Math.ceil((win.end.getTime() - now) / msPerDay)
@@ -173,31 +202,16 @@ function getReminderState(r) {
         label: daysToEnd <= 0 ? '今日截止！' : (daysToEnd <= 3 ? `最后 ${daysToEnd} 天截止！` : `办理期中 · 还剩 ${daysToEnd} 天`)
       }
     }
-
-    // Passed deadline
-    return {
-      isDue: true,
-      isUrgent: true,
-      daysToEnd,
-      label: '已截止 / 逾期'
-    }
   }
 
-  // 2. Single point in time deadline
+  // 3. Single deadline
   const days = Math.ceil((win.end.getTime() - now) / msPerDay)
   const remindBefore = r.remind_days_before ?? 30
-  if (days < 0) {
-    return { isDue: true, isUrgent: true, days, label: '已逾期！' }
-  }
-  if (days === 0) {
-    return { isDue: true, isUrgent: true, days, label: '今天截止！' }
-  }
-  if (days <= 3) {
-    return { isDue: true, isUrgent: true, days, label: `仅剩 ${days} 天！` }
-  }
-  if (days <= remindBefore) {
-    return { isDue: true, isUrgent: false, days, label: `还有 ${days} 天` }
-  }
+  if (days < 0) return { isDue: true, isUrgent: true, days, label: '已逾期！' }
+  if (days === 0) return { isDue: true, isUrgent: true, days, label: '今天截止！' }
+  if (days <= 3) return { isDue: true, isUrgent: true, days, label: `仅剩 ${days} 天！` }
+  if (days <= remindBefore) return { isDue: true, isUrgent: false, days, label: `还有 ${days} 天` }
+
   return { isDue: false, days, label: `还有 ${days} 天` }
 }
 
@@ -261,7 +275,7 @@ export async function checkAndSendReminders(settings) {
 
   let reminders
   try {
-    reminders = await query("SELECT * FROM reminders WHERE status != 'done' ORDER BY sort_order ASC, created_at ASC")
+    reminders = await query("SELECT * FROM reminders ORDER BY sort_order ASC, created_at ASC")
   } catch (error) {
     if (error.code !== 'ER_NO_SUCH_TABLE') console.error('[Notification] 查询提醒事项失败:', error.message)
     return { sentCount: 0, skippedCount: 0 }

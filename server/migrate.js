@@ -87,6 +87,12 @@ export async function runMigrations({ silent = false } = {}) {
           [process.env.DB_NAME]
         )
         if (tblRows.length > 0) alreadySatisfied = true
+      } else if (file.startsWith('010_')) {
+        const colRows = await conn.query(
+          `SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'reminders' AND COLUMN_NAME = 'last_completed_cycle'`,
+          [process.env.DB_NAME]
+        )
+        if (colRows.length > 0) alreadySatisfied = true
       }
 
       if (!alreadySatisfied) {

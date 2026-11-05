@@ -1089,7 +1089,7 @@ app.post('/api/domains/reorder', requireAuth, async (req, res) => {
 
 // === Reminders API ===
 
-const reminderColumns = `id, title, description, category, recur_type, start_month, start_day, recur_month, recur_day, start_date, due_date, remind_days_before, status, action_url, action_label, sort_order, created_at, updated_at`
+const reminderColumns = `id, title, description, category, recur_type, start_month, start_day, recur_month, recur_day, start_date, due_date, remind_days_before, status, last_completed_cycle, last_completed_at, action_url, action_label, sort_order, created_at, updated_at`
 
 function reminderPayload(body) {
   const payload = {}
@@ -1120,6 +1120,12 @@ function reminderPayload(body) {
     if (Number.isInteger(days) && days >= 0 && days <= 365) payload.remind_days_before = days
   }
   if (body.status !== undefined && ['pending', 'done', 'snoozed'].includes(body.status)) payload.status = body.status
+  if (body.last_completed_cycle !== undefined) {
+    payload.last_completed_cycle = typeof body.last_completed_cycle === 'string' ? body.last_completed_cycle.trim().slice(0, 20) || null : null
+  }
+  if (body.last_completed_at !== undefined) {
+    payload.last_completed_at = body.last_completed_at ? new Date(body.last_completed_at) : null
+  }
   if (body.action_url !== undefined) payload.action_url = typeof body.action_url === 'string' ? body.action_url.trim().slice(0, 500) || null : null
   if (body.action_label !== undefined) payload.action_label = typeof body.action_label === 'string' ? body.action_label.trim().slice(0, 100) || null : null
   if (body.sort_order !== undefined) {

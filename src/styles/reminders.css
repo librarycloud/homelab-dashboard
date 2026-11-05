@@ -168,6 +168,11 @@
   color: var(--homelab-primary);
   border: 1px solid var(--homelab-primary);
 }
+.tag-status.status-critical {
+  background: #3b1e1e;
+  color: #e07070;
+  border: 1px solid #7a3838;
+}
 .tag-status.status-done {
   background: #141e26;
   color: #5c6e7f;
@@ -634,6 +639,11 @@ html.homelab-light .tag-status.status-active {
   background: var(--homelab-primary-soft);
   color: var(--homelab-primary-dark-soft);
   border-color: var(--homelab-primary);
+}
+html.homelab-light .tag-status.status-critical {
+  background: #fdf0f0;
+  color: #c0434d;
+  border-color: #f5c5c8;
 }
 html.homelab-light .tag-status.status-done {
   background: #f1f4f6;

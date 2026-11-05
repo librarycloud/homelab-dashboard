@@ -44,11 +44,11 @@ const counts = computed(() => {
   let done = 0
 
   reminders.value.forEach((r) => {
-    if (r.status === 'done') {
+    const state = getReminderState(r)
+    if (state.isDone) {
       done++
     } else {
       pending++
-      const state = getReminderState(r)
       if (state.isActive) {
         active++
       }
@@ -83,11 +83,11 @@ const visibleReminders = computed(() => {
     const state = getReminderState(r)
     let matchStatus = true
     if (filterStatus.value === '待办') {
-      matchStatus = r.status !== 'done'
+      matchStatus = !state.isDone
     } else if (filterStatus.value === '办理中') {
-      matchStatus = r.status !== 'done' && state.isActive
+      matchStatus = !state.isDone && state.isActive
     } else if (filterStatus.value === '已完成') {
-      matchStatus = r.status === 'done'
+      matchStatus = state.isDone
     }
 
     const matchCat = filterCat.value === '全部' || r.category === filterCat.value
@@ -98,12 +98,14 @@ const visibleReminders = computed(() => {
   // 1. Incomplete first, completed (done) at the back
   // 2. Earliest deadline / due date first
   return [...filtered].sort((a, b) => {
-    const aDone = a.status === 'done' ? 1 : 0
-    const bDone = b.status === 'done' ? 1 : 0
+    const stateA = getReminderState(a)
+    const stateB = getReminderState(b)
+    const aDone = stateA.isDone ? 1 : 0
+    const bDone = stateB.isDone ? 1 : 0
     if (aDone !== bDone) return aDone - bDone
 
-    const winA = getPeriodInfo(a)
-    const winB = getPeriodInfo(b)
+    const winA = getCycleInfo(a)
+    const winB = getCycleInfo(b)
     const timeA = winA?.end ? winA.end.getTime() : Infinity
     const timeB = winB?.end ? winB.end.getTime() : Infinity
 
@@ -113,104 +115,222 @@ const visibleReminders = computed(() => {
   })
 })
 
-// ── Window & Urgency calculation ─────────────────────────
-function getPeriodInfo(r) {
+// ── Window & Cycle calculation ───────────────────────────
+function getCycleInfo(r) {
   const now = new Date()
   const currentYear = now.getFullYear()
+  const currentMonth = now.getMonth() // 0-based
   const msPerDay = 86400000
 
+  // 1. One-off ('once')
   if (r.recur_type === 'once') {
-    if (!r.due_date) return null
     const start = r.start_date ? new Date(r.start_date) : null
-    const end = new Date(r.due_date)
-    end.setHours(23, 59, 59, 999)
-    return { start, end, isPeriod: Boolean(start) }
+    let end = r.due_date ? new Date(r.due_date) : null
+    if (end) end.setHours(23, 59, 59, 999)
+    const isDone = r.status === 'done' || r.last_completed_cycle === 'once'
+    const isOverdue = !isDone && end && (now.getTime() > end.getTime())
+    const overdueDays = isOverdue ? Math.ceil((now.getTime() - end.getTime()) / msPerDay) : 0
+    return {
+      cycleKey: 'once',
+      cycleLabel: '',
+      start,
+      end,
+      isPeriod: Boolean(start),
+      isDone,
+      isOverdue,
+      overdueDays,
+      lastDoneCycle: isDone ? 'once' : null
+    }
   }
 
+  // 2. Yearly ('yearly')
   if (r.recur_type === 'yearly' && r.recur_month && r.recur_day) {
     const hasStart = Boolean(r.start_month && r.start_day)
     const isCrossYear = hasStart && (r.start_month > r.recur_month || (r.start_month === r.recur_month && r.start_day > r.recur_day))
 
-    let year = currentYear
-    let start = hasStart ? new Date(year, r.start_month - 1, r.start_day, 0, 0, 0) : null
-    let end = new Date(year, r.recur_month - 1, r.recur_day, 23, 59, 59)
+    // Deadline for currentYear
+    const deadlineCurrYear = new Date(currentYear, r.recur_month - 1, r.recur_day, 23, 59, 59)
+    
+    // Check if currentYear's cycle was already completed
+    const isCurrYearDone = r.last_completed_cycle === String(currentYear) ||
+      (r.status === 'done' && (!r.last_completed_cycle || r.last_completed_cycle === String(currentYear)))
 
-    if (isCrossYear) {
-      if (now <= end) {
-        start = new Date(year - 1, r.start_month - 1, r.start_day, 0, 0, 0)
+    let targetYear = currentYear
+    if (now.getTime() > deadlineCurrYear.getTime()) {
+      if (isCurrYearDone) {
+        // Completed this year -> target advances to next year
+        targetYear = currentYear + 1
       } else {
-        start = new Date(year, r.start_month - 1, r.start_day, 0, 0, 0)
-        end = new Date(year + 1, r.recur_month - 1, r.recur_day, 23, 59, 59)
+        // Not completed -> target stays currentYear as overdue
+        targetYear = currentYear
       }
     } else {
-      if (now > end) {
-        if (r.status !== 'done' && (now.getTime() - end.getTime()) < 60 * msPerDay) {
-          // Keep current year window as overdue
-        } else {
-          year += 1
-          if (hasStart) start = new Date(year, r.start_month - 1, r.start_day, 0, 0, 0)
-          end = new Date(year, r.recur_month - 1, r.recur_day, 23, 59, 59)
-        }
-      }
+      targetYear = currentYear
     }
-    return { start, end, isPeriod: hasStart }
+
+    let end = new Date(targetYear, r.recur_month - 1, r.recur_day, 23, 59, 59)
+    let start = null
+    if (hasStart) {
+      const startYear = isCrossYear ? targetYear - 1 : targetYear
+      start = new Date(startYear, r.start_month - 1, r.start_day, 0, 0, 0)
+    }
+
+    const cycleKey = String(targetYear)
+    const cycleLabel = `${targetYear}年`
+
+    // Is target cycle completed?
+    let isDone = r.last_completed_cycle === cycleKey
+    // If resting between completion of previous year and opening of next year's window
+    if (!isDone && isCurrYearDone && start && now.getTime() < start.getTime()) {
+      isDone = true
+    }
+
+    const isOverdue = !isDone && (now.getTime() > end.getTime())
+    const overdueDays = isOverdue ? Math.ceil((now.getTime() - end.getTime()) / msPerDay) : 0
+
+    return {
+      cycleKey,
+      cycleLabel,
+      targetYear,
+      start,
+      end,
+      isPeriod: hasStart,
+      isDone,
+      isOverdue,
+      overdueDays,
+      lastDoneCycle: r.last_completed_cycle
+    }
   }
 
+  // 3. Monthly ('monthly')
   if (r.recur_type === 'monthly' && r.recur_day) {
-    let y = now.getFullYear()
-    let m = now.getMonth()
     const hasStart = Boolean(r.start_day)
-    let start = hasStart ? new Date(y, m, r.start_day, 0, 0, 0) : null
-    let end = new Date(y, m, r.recur_day, 23, 59, 59)
-    if (now > end) {
-      if (r.status !== 'done' && (now.getTime() - end.getTime()) < 15 * msPerDay) {
-        // Overdue
+    const fmtMonthCycle = (y, m) => `${y}-${String(m + 1).padStart(2, '0')}`
+    
+    const currCycleKey = fmtMonthCycle(currentYear, currentMonth)
+    const deadlineCurrMonth = new Date(currentYear, currentMonth, r.recur_day, 23, 59, 59)
+    const isCurrMonthDone = r.last_completed_cycle === currCycleKey ||
+      (r.status === 'done' && (!r.last_completed_cycle || r.last_completed_cycle === currCycleKey))
+
+    let targetY = currentYear
+    let targetM = currentMonth
+
+    if (now.getTime() > deadlineCurrMonth.getTime()) {
+      if (isCurrMonthDone) {
+        targetM += 1
+        if (targetM > 11) {
+          targetM = 0
+          targetY += 1
+        }
       } else {
-        m += 1
-        if (hasStart) start = new Date(y, m, r.start_day, 0, 0, 0)
-        end = new Date(y, m, r.recur_day, 23, 59, 59)
+        targetY = currentYear
+        targetM = currentMonth
       }
     }
-    return { start, end, isPeriod: hasStart }
+
+    const cycleKey = fmtMonthCycle(targetY, targetM)
+    const cycleLabel = `${targetM + 1}月`
+    const end = new Date(targetY, targetM, r.recur_day, 23, 59, 59)
+    const start = hasStart ? new Date(targetY, targetM, r.start_day, 0, 0, 0) : null
+
+    let isDone = r.last_completed_cycle === cycleKey
+    if (!isDone && isCurrMonthDone && start && now.getTime() < start.getTime()) {
+      isDone = true
+    }
+
+    const isOverdue = !isDone && (now.getTime() > end.getTime())
+    const overdueDays = isOverdue ? Math.ceil((now.getTime() - end.getTime()) / msPerDay) : 0
+
+    return {
+      cycleKey,
+      cycleLabel,
+      start,
+      end,
+      isPeriod: hasStart,
+      isDone,
+      isOverdue,
+      overdueDays,
+      lastDoneCycle: r.last_completed_cycle
+    }
   }
 
   return null
 }
 
-function getReminderState(r) {
-  if (r.status === 'done') {
-    return {
-      level: 'done',
-      label: '已完成',
-      badgeClass: 'level-done',
-      progress: 100,
-      isActive: false
-    }
-  }
+function getPeriodInfo(r) {
+  return getCycleInfo(r)
+}
 
-  const win = getPeriodInfo(r)
+function getReminderState(r) {
+  const win = getCycleInfo(r)
   if (!win || !win.end) {
-    return { level: 'ok', label: '—', badgeClass: 'level-ok', progress: 0, isActive: false }
+    if (r.status === 'done') {
+      return { level: 'done', label: '已完成', badgeClass: 'level-done', progress: 100, isActive: false, isDone: true }
+    }
+    return { level: 'ok', label: '—', badgeClass: 'level-ok', progress: 0, isActive: false, isDone: false }
   }
 
   const now = Date.now()
   const msPerDay = 86400000
 
-  // 1. Period with start & end
+  // 1. If currently completed for this cycle (or resting before next cycle opens)
+  if (win.isDone) {
+    if (win.start && now < win.start.getTime()) {
+      const daysToStart = Math.ceil((win.start.getTime() - now) / msPerDay)
+      const prevPrefix = win.lastDoneCycle ? `${win.lastDoneCycle}已办结 · ` : '已完成 · '
+      return {
+        level: 'done',
+        label: `${prevPrefix}距下期 ${daysToStart} 天`,
+        badgeClass: 'level-done',
+        progress: 100,
+        isActive: false,
+        isDone: true,
+        daysToStart
+      }
+    }
+    return {
+      level: 'done',
+      label: win.cycleLabel ? `${win.cycleLabel}已办结` : '已完成',
+      badgeClass: 'level-done',
+      progress: 100,
+      isActive: false,
+      isDone: true
+    }
+  }
+
+  // 2. Overdue from previous or current cycle
+  if (win.isOverdue) {
+    const cyclePrefix = win.cycleLabel ? `${win.cycleLabel} ` : ''
+    return {
+      level: 'critical',
+      label: `${cyclePrefix}已逾期！请尽快办理`,
+      badgeClass: 'level-critical',
+      progress: 100,
+      isExpired: true,
+      isActive: true, // Needs action
+      isDone: false,
+      isOverdue: true,
+      overdueDays: win.overdueDays
+    }
+  }
+
+  // 3. Period with start & end
   if (win.start) {
     const daysToStart = Math.ceil((win.start.getTime() - now) / msPerDay)
     const daysToEnd = Math.ceil((win.end.getTime() - now) / msPerDay)
 
     if (now < win.start.getTime()) {
+      const cyclePrefix = win.cycleLabel ? `${win.cycleLabel} ` : ''
       return {
         level: daysToStart <= 7 ? 'warning' : 'ok',
-        label: daysToStart <= 1 ? '明天开始办理' : `还有 ${daysToStart} 天开始`,
+        label: daysToStart <= 1 ? `${cyclePrefix}明天开始办理` : `${cyclePrefix}还有 ${daysToStart} 天开始`,
         badgeClass: daysToStart <= 7 ? 'level-warning' : 'level-upcoming',
         daysToStart,
         daysToEnd,
         progress: 0,
         isUpcoming: true,
-        isActive: false
+        isActive: false,
+        isDone: false
       }
     }
 
@@ -228,7 +348,8 @@ function getReminderState(r) {
           totalDays,
           elapsedDays,
           progress,
-          isActive: true
+          isActive: true,
+          isDone: false
         }
       }
       if (daysToEnd <= 7) {
@@ -240,7 +361,8 @@ function getReminderState(r) {
           totalDays,
           elapsedDays,
           progress,
-          isActive: true
+          isActive: true,
+          isDone: false
         }
       }
       return {
@@ -251,28 +373,19 @@ function getReminderState(r) {
         totalDays,
         elapsedDays,
         progress,
-        isActive: true
+        isActive: true,
+        isDone: false
       }
-    }
-
-    // Passed deadline
-    return {
-      level: 'critical',
-      label: '已截止 / 逾期',
-      badgeClass: 'level-critical',
-      progress: 100,
-      isExpired: true,
-      isActive: false
     }
   }
 
-  // 2. Single point in time deadline
+  // 4. Single point in time deadline
   const days = Math.ceil((win.end.getTime() - now) / msPerDay)
-  if (days < 0) return { level: 'critical', label: '已逾期！', badgeClass: 'level-critical', days, isActive: false }
-  if (days === 0) return { level: 'critical', label: '今天截止！', badgeClass: 'level-critical', days, isActive: false }
-  if (days <= 3) return { level: 'critical', label: `仅剩 ${days} 天`, badgeClass: 'level-critical', days, isActive: false }
-  if (days <= (r.remind_days_before ?? 30)) return { level: 'warning', label: `还有 ${days} 天`, badgeClass: 'level-warning', days, isActive: false }
-  return { level: 'ok', label: `还有 ${days} 天`, badgeClass: 'level-ok', days, isActive: false }
+  if (days < 0) return { level: 'critical', label: '已逾期！', badgeClass: 'level-critical', days, isActive: true, isDone: false, isOverdue: true }
+  if (days === 0) return { level: 'critical', label: '今天截止！', badgeClass: 'level-critical', days, isActive: true, isDone: false }
+  if (days <= 3) return { level: 'critical', label: `仅剩 ${days} 天`, badgeClass: 'level-critical', days, isActive: true, isDone: false }
+  if (days <= (r.remind_days_before ?? 30)) return { level: 'warning', label: `还有 ${days} 天`, badgeClass: 'level-warning', days, isActive: true, isDone: false }
+  return { level: 'ok', label: `还有 ${days} 天`, badgeClass: 'level-ok', days, isActive: false, isDone: false }
 }
 
 function formatPeriodText(r) {
@@ -335,10 +448,13 @@ function isLongDesc(text) {
 }
 
 function statusTagInfo(r) {
-  if (r.status === 'done') {
+  const state = getReminderState(r)
+  if (state.isDone) {
     return { label: '已完成', className: 'status-done' }
   }
-  const state = getReminderState(r)
+  if (state.isOverdue) {
+    return { label: '已逾期', className: 'status-critical' }
+  }
   if (state.isActive) {
     return { label: '办理中', className: 'status-active' }
   }
@@ -460,7 +576,26 @@ async function save() {
 
 async function toggleDone(r) {
   try {
-    await store.updateReminder(r.id, { status: r.status === 'done' ? 'pending' : 'done' })
+    const state = getReminderState(r)
+    const win = getCycleInfo(r)
+
+    if (state.isDone) {
+      await store.updateReminder(r.id, {
+        status: 'pending',
+        last_completed_cycle: null,
+        last_completed_at: null
+      })
+      ElMessage.success('已恢复为待办')
+    } else {
+      const completedCycle = win?.cycleKey || 'done'
+      await store.updateReminder(r.id, {
+        status: 'done',
+        last_completed_cycle: completedCycle,
+        last_completed_at: new Date()
+      })
+      const cycleName = win?.cycleLabel ? ` (${win.cycleLabel})` : ''
+      ElMessage.success(`已办结${cycleName}`)
+    }
   } catch (e) {
     ElMessage.error(e.message || '操作失败')
   }
@@ -545,7 +680,7 @@ onMounted(() => store.fetchReminders())
       :class="[
         `urgency-${getReminderState(r).level}`,
         {
-          done: r.status === 'done',
+          done: getReminderState(r).isDone,
           'in-window': getReminderState(r).isActive,
           'has-long-desc': isLongDesc(r.description),
           'is-expanded': isExpanded(r.id)
@@ -565,11 +700,11 @@ onMounted(() => store.fetchReminders())
           <button
             type="button"
             class="done-check"
-            :class="{ checked: r.status === 'done' }"
-            :title="r.status === 'done' ? '标记为待办' : '标记为已完成'"
-            @click="toggleDone(r)"
+            :class="{ checked: getReminderState(r).isDone }"
+            :title="getReminderState(r).isDone ? '标记为待办' : '标记为已完成'"
+            @click.stop="toggleDone(r)"
           >
-            <el-icon v-if="r.status === 'done'"><Check /></el-icon>
+            <el-icon v-if="getReminderState(r).isDone"><Check /></el-icon>
           </button>
 
           <div class="reminder-title-wrap">
@@ -596,7 +731,7 @@ onMounted(() => store.fetchReminders())
             <template #dropdown>
               <el-dropdown-menu class="reminder-action-menu">
                 <el-dropdown-item command="toggle">
-                  {{ r.status === 'done' ? '标记为待办' : '标记为已完成' }}
+                  {{ getReminderState(r).isDone ? '标记为待办' : '标记为已完成' }}
                 </el-dropdown-item>
                 <el-dropdown-item command="edit">编辑</el-dropdown-item>
                 <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
