@@ -6,10 +6,33 @@
   margin-bottom: 20px;
   flex-wrap: wrap;
 }
+.filter-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tab-count {
+  font: 10px 'DM Mono', monospace;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .08);
+  color: #8da4be;
+  line-height: 1.2;
+}
+.filter-tabs button.selected .tab-count {
+  background: rgba(var(--homelab-primary-rgb), .2);
+  color: var(--homelab-primary);
+}
 .cat-filters {
   display: flex;
+  align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+}
+.cat-filter-label {
+  font: 11px 'DM Mono', monospace;
+  color: #647586;
+  margin-right: 2px;
 }
 .cat-btn {
   border: 1px solid #243241;
@@ -51,6 +74,7 @@
   transition: border-color .2s, transform .15s, box-shadow .2s;
 }
 .reminder-card:hover { transform: translateY(-1px); }
+.reminder-card.has-long-desc:not(.is-expanded) { cursor: pointer; }
 
 .reminder-card.in-window {
   border-color: rgba(var(--homelab-primary-rgb), .35);
@@ -125,6 +149,29 @@
 }
 .done .reminder-title { text-decoration: line-through; color: #56687a; }
 .reminder-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.tag-status {
+  font: 10px 'DM Mono', monospace;
+  padding: 2px 7px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 500;
+}
+.tag-status.status-pending {
+  background: #152433;
+  color: #7da5cc;
+  border: 1px solid #283e54;
+}
+.tag-status.status-active {
+  background: var(--homelab-primary-dark-soft);
+  color: var(--homelab-primary);
+  border: 1px solid var(--homelab-primary);
+}
+.tag-status.status-done {
+  background: #141e26;
+  color: #5c6e7f;
+  border: 1px solid #202b36;
+}
 .tag-cat {
   font: 10px 'DM Mono';
   background: var(--homelab-primary-dark-soft);
@@ -247,11 +294,12 @@
 }
 
 .reminder-desc.is-collapsed {
-  max-height: 80px;
+  max-height: 60px;
   overflow: hidden;
   position: relative;
-  -webkit-mask-image: linear-gradient(to bottom, #000 45%, transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 45%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 30%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 30%, transparent 100%);
+  cursor: pointer;
 }
 
 .desc-expand-btn {
@@ -557,6 +605,32 @@ html.homelab-light .done-check.checked {
 html.homelab-light .action-link-btn { background: #fff; }
 html.homelab-light .action-link-btn:hover { background: var(--homelab-primary-soft); }
 html.homelab-light .desc-expand-btn { color: var(--homelab-primary-dark-soft); }
+html.homelab-light .tab-count {
+  background: rgba(0, 0, 0, .06);
+  color: #617382;
+}
+html.homelab-light .filter-tabs button.selected .tab-count {
+  background: rgba(var(--homelab-primary-rgb), .15);
+  color: var(--homelab-primary-dark-soft);
+}
+html.homelab-light .cat-filter-label {
+  color: #728292;
+}
+html.homelab-light .tag-status.status-pending {
+  background: #edf3f8;
+  color: #4a6c8e;
+  border-color: #cedde8;
+}
+html.homelab-light .tag-status.status-active {
+  background: var(--homelab-primary-soft);
+  color: var(--homelab-primary-dark-soft);
+  border-color: var(--homelab-primary);
+}
+html.homelab-light .tag-status.status-done {
+  background: #f1f4f6;
+  color: #83929e;
+  border-color: #d6dfe5;
+}
 html.homelab-light .mode-btn { background: #f8fafc; border-color: #dce4ec; }
 html.homelab-light .mode-btn strong { color: #334454; }
 html.homelab-light .mode-btn small { color: #728292; }

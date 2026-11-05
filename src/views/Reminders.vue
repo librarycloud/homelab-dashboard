@@ -34,18 +34,52 @@ const store = useRemindersStore()
 const reminders = computed(() => store.reminders)
 const loading = computed(() => store.loading)
 
-// ── Filters ──────────────────────────────────────────────
+// ── Filters & Counts ─────────────────────────────────────
 const filterStatus = ref('全部')
 const filterCat = ref('全部')
-const statusFilters = ['全部', '待办', '办理中', '已完成']
+
+const counts = computed(() => {
+  let pending = 0
+  let active = 0
+  let done = 0
+
+  reminders.value.forEach((r) => {
+    if (r.status === 'done') {
+      done++
+    } else {
+      pending++
+      const state = getReminderState(r)
+      if (state.isActive) {
+        active++
+      }
+    }
+  })
+
+  return {
+    all: reminders.value.length,
+    pending,
+    active,
+    done
+  }
+})
+
+const statusFilters = computed(() => [
+  { key: '全部', label: '全部', count: counts.value.all },
+  { key: '待办', label: '待办', count: counts.value.pending },
+  { key: '办理中', label: '办理中', count: counts.value.active },
+  { key: '已完成', label: '已完成', count: counts.value.done }
+])
+
+const categoryList = computed(() => {
+  return [...new Set(reminders.value.map((r) => r.category).filter(Boolean))]
+})
 
 const allCategories = computed(() => {
-  const cats = [...new Set(reminders.value.map((r) => r.category).filter(Boolean))]
-  return ['全部', ...cats]
+  return ['全部', ...categoryList.value]
 })
 
 const visibleReminders = computed(() => {
-  return reminders.value.filter((r) => {
+  const filtered = reminders.value.filter((r) => {
     const state = getReminderState(r)
     let matchStatus = true
     if (filterStatus.value === '待办') {
@@ -58,6 +92,24 @@ const visibleReminders = computed(() => {
 
     const matchCat = filterCat.value === '全部' || r.category === filterCat.value
     return matchStatus && matchCat
+  })
+
+  // Sort:
+  // 1. Incomplete first, completed (done) at the back
+  // 2. Earliest deadline / due date first
+  return [...filtered].sort((a, b) => {
+    const aDone = a.status === 'done' ? 1 : 0
+    const bDone = b.status === 'done' ? 1 : 0
+    if (aDone !== bDone) return aDone - bDone
+
+    const winA = getPeriodInfo(a)
+    const winB = getPeriodInfo(b)
+    const timeA = winA?.end ? winA.end.getTime() : Infinity
+    const timeB = winB?.end ? winB.end.getTime() : Infinity
+
+    if (timeA !== timeB) return timeA - timeB
+
+    return (b.id || 0) - (a.id || 0)
   })
 })
 
@@ -282,6 +334,28 @@ function isLongDesc(text) {
   return trimmed.length > 100 || lines.length > 2
 }
 
+function statusTagInfo(r) {
+  if (r.status === 'done') {
+    return { label: '已完成', className: 'status-done' }
+  }
+  const state = getReminderState(r)
+  if (state.isActive) {
+    return { label: '办理中', className: 'status-active' }
+  }
+  return { label: '待办', className: 'status-pending' }
+}
+
+function handleCardClick(r, event) {
+  if (!isLongDesc(r.description)) return
+  if (event.target.closest('button, a, .el-dropdown, .done-check, .action-link-btn, .card-menu, input, textarea')) {
+    return
+  }
+  const sel = window.getSelection()?.toString()
+  if (sel && sel.length > 0) return
+
+  toggleExpand(r.id)
+}
+
 // ── Dialog form ───────────────────────────────────────────
 const dialogVisible = ref(false)
 const isEditing = ref(false)
@@ -438,12 +512,16 @@ onMounted(() => store.fetchReminders())
   <div class="reminders-toolbar">
     <div class="filter-tabs">
       <button
-        v-for="s in statusFilters" :key="s"
-        :class="{ selected: filterStatus === s }"
-        @click="filterStatus = s"
-      >{{ s }}</button>
+        v-for="s in statusFilters" :key="s.key"
+        :class="{ selected: filterStatus === s.key }"
+        @click="filterStatus = s.key"
+      >
+        <span>{{ s.label }}</span>
+        <span class="tab-count">{{ s.count }}</span>
+      </button>
     </div>
-    <div class="cat-filters">
+    <div v-if="categoryList.length > 0" class="cat-filters">
+      <span class="cat-filter-label">分类:</span>
       <button
         v-for="c in allCategories" :key="c"
         class="cat-btn"
@@ -464,7 +542,16 @@ onMounted(() => store.fetchReminders())
       v-for="r in visibleReminders"
       :key="r.id"
       class="reminder-card"
-      :class="[`urgency-${getReminderState(r).level}`, { done: r.status === 'done', 'in-window': getReminderState(r).isActive }]"
+      :class="[
+        `urgency-${getReminderState(r).level}`,
+        {
+          done: r.status === 'done',
+          'in-window': getReminderState(r).isActive,
+          'has-long-desc': isLongDesc(r.description),
+          'is-expanded': isExpanded(r.id)
+        }
+      ]"
+      @click="handleCardClick(r, $event)"
     >
       <div class="reminder-main">
         <div class="reminder-head">
@@ -482,6 +569,7 @@ onMounted(() => store.fetchReminders())
           <div class="reminder-title-wrap">
             <h3 class="reminder-title">{{ r.title }}</h3>
             <div class="reminder-tags">
+              <span class="tag-status" :class="statusTagInfo(r).className">{{ statusTagInfo(r).label }}</span>
               <span v-if="r.category" class="tag-cat">{{ r.category }}</span>
               <span class="tag-recur">{{ recurLabel(r) }}</span>
             </div>
@@ -540,6 +628,7 @@ onMounted(() => store.fetchReminders())
           <div
             class="reminder-desc markdown-body"
             :class="{ 'is-collapsed': isLongDesc(r.description) && !isExpanded(r.id) }"
+            :title="isLongDesc(r.description) && !isExpanded(r.id) ? '点击卡片展开详情' : ''"
             v-html="renderMd(r.description)"
           />
           <button
