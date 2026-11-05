@@ -6,6 +6,7 @@ const Services = () => import('./views/Services.vue')
 const Domains = () => import('./views/Domains.vue')
 const Login = () => import('./views/Login.vue')
 const Settings = () => import('./views/Settings.vue')
+const Reminders = () => import('./views/Reminders.vue')
 
 const router = createRouter({
   history: createWebHistory(),
@@ -13,6 +14,7 @@ const router = createRouter({
     { path: '/', component: Dashboard },
     { path: '/services', component: Services },
     { path: '/domains', component: Domains },
+    { path: '/reminders', component: Reminders },
     { path: '/settings', component: Settings },
     { path: '/login', component: Login }
   ]

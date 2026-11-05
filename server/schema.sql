@@ -86,3 +86,27 @@ CREATE TABLE IF NOT EXISTS domains (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE INDEX idx_domains_domain_name (domain_name)
 );
+
+CREATE TABLE IF NOT EXISTS reminders (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(200) NOT NULL,
+  description TEXT NULL,
+  category VARCHAR(50) NULL,
+  recur_type VARCHAR(10) NOT NULL DEFAULT 'yearly',
+  start_month TINYINT UNSIGNED NULL,
+  start_day TINYINT UNSIGNED NULL,
+  recur_month TINYINT UNSIGNED NULL,
+  recur_day TINYINT UNSIGNED NULL,
+  start_date DATETIME NULL,
+  due_date DATETIME NULL,
+  remind_days_before INT UNSIGNED NOT NULL DEFAULT 30,
+  status VARCHAR(10) NOT NULL DEFAULT 'pending',
+  action_url VARCHAR(500) NULL,
+  action_label VARCHAR(100) NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_reminders_status (status),
+  INDEX idx_reminders_category (category),
+  INDEX idx_reminders_sort (sort_order)
+);

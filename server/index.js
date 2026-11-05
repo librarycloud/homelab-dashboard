@@ -8,6 +8,7 @@ import { rateLimit } from 'express-rate-limit'
 import { pool, query, isDbConfigured, missingDbEnv } from './db.js'
 import { checkVersion, refreshServiceStatus, mapConcurrent } from './serviceChecks.js'
 import { refreshDomainInfo } from './domainChecks.js'
+import { runMigrations } from './migrate.js'
 
 const app = express()
 const port = process.env.API_PORT || 3000
@@ -1012,6 +1013,134 @@ app.post('/api/domains/reorder', requireAuth, async (req, res) => {
   }
 })
 
+// === Reminders API ===
+
+const reminderColumns = `id, title, description, category, recur_type, start_month, start_day, recur_month, recur_day, start_date, due_date, remind_days_before, status, action_url, action_label, sort_order, created_at, updated_at`
+
+function reminderPayload(body) {
+  const payload = {}
+  if (typeof body.title === 'string') payload.title = body.title.trim()
+  if (body.description !== undefined) payload.description = typeof body.description === 'string' ? body.description.trim() || null : null
+  if (body.category !== undefined) payload.category = typeof body.category === 'string' ? body.category.trim().slice(0, 50) || null : null
+  if (body.recur_type !== undefined && ['once', 'yearly', 'monthly'].includes(body.recur_type)) payload.recur_type = body.recur_type
+  if (body.start_month !== undefined) {
+    const m = Number(body.start_month)
+    payload.start_month = Number.isInteger(m) && m >= 1 && m <= 12 ? m : null
+  }
+  if (body.start_day !== undefined) {
+    const d = Number(body.start_day)
+    payload.start_day = Number.isInteger(d) && d >= 1 && d <= 31 ? d : null
+  }
+  if (body.recur_month !== undefined) {
+    const m = Number(body.recur_month)
+    payload.recur_month = Number.isInteger(m) && m >= 1 && m <= 12 ? m : null
+  }
+  if (body.recur_day !== undefined) {
+    const d = Number(body.recur_day)
+    payload.recur_day = Number.isInteger(d) && d >= 1 && d <= 31 ? d : null
+  }
+  if (body.start_date !== undefined) payload.start_date = body.start_date ? new Date(body.start_date) : null
+  if (body.due_date !== undefined) payload.due_date = body.due_date ? new Date(body.due_date) : null
+  if (body.remind_days_before !== undefined) {
+    const days = Number(body.remind_days_before)
+    if (Number.isInteger(days) && days >= 0 && days <= 365) payload.remind_days_before = days
+  }
+  if (body.status !== undefined && ['pending', 'done', 'snoozed'].includes(body.status)) payload.status = body.status
+  if (body.action_url !== undefined) payload.action_url = typeof body.action_url === 'string' ? body.action_url.trim().slice(0, 500) || null : null
+  if (body.action_label !== undefined) payload.action_label = typeof body.action_label === 'string' ? body.action_label.trim().slice(0, 100) || null : null
+  if (body.sort_order !== undefined) {
+    const order = Number(body.sort_order)
+    if (Number.isInteger(order)) payload.sort_order = order
+  }
+  return payload
+}
+
+app.get('/api/reminders', requireAuth, async (_req, res) => {
+  try {
+    const rows = await query(`SELECT ${reminderColumns} FROM reminders ORDER BY sort_order ASC, created_at ASC`)
+    res.json(rows)
+  } catch (error) {
+    if (error.code === 'ER_NO_SUCH_TABLE') return res.json([])
+    sendDatabaseError(res, error)
+  }
+})
+
+app.post('/api/reminders', requireAuth, async (req, res) => {
+  const reminder = reminderPayload(req.body || {})
+  if (!reminder.title) return res.status(400).json({ message: '标题不能为空' })
+  try {
+    const columns = Object.keys(reminder)
+    const result = await query(
+      `INSERT INTO reminders (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
+      columns.map((col) => reminder[col])
+    )
+    const rows = await query(`SELECT ${reminderColumns} FROM reminders WHERE id = ?`, [result.insertId])
+    res.status(201).json(rows[0])
+  } catch (error) {
+    sendDatabaseError(res, error)
+  }
+})
+
+app.put('/api/reminders/:id', requireAuth, async (req, res) => {
+  const id = Number(req.params.id)
+  if (!Number.isInteger(id) || id < 1) return res.status(400).json({ message: 'Invalid reminder ID' })
+  const reminder = reminderPayload(req.body || {})
+  const columns = Object.keys(reminder)
+  if (!columns.length) return res.status(400).json({ message: 'No valid fields provided' })
+  try {
+    const result = await query(
+      `UPDATE reminders SET ${columns.map((col) => col + ' = ?').join(', ')} WHERE id = ?`,
+      [...columns.map((col) => reminder[col]), id]
+    )
+    if (!result.affectedRows) return res.status(404).json({ message: 'Reminder not found' })
+    const rows = await query(`SELECT ${reminderColumns} FROM reminders WHERE id = ?`, [id])
+    res.json(rows[0])
+  } catch (error) {
+    sendDatabaseError(res, error)
+  }
+})
+
+app.delete('/api/reminders/:id', requireAuth, async (req, res) => {
+  const id = Number(req.params.id)
+  if (!Number.isInteger(id) || id < 1) return res.status(400).json({ message: 'Invalid reminder ID' })
+  try {
+    const result = await query('DELETE FROM reminders WHERE id = ?', [id])
+    if (!result.affectedRows) return res.status(404).json({ message: 'Reminder not found' })
+    res.status(204).end()
+  } catch (error) {
+    sendDatabaseError(res, error)
+  }
+})
+
+app.post('/api/reminders/reorder', requireAuth, async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number) : []
+  if (!ids.length || ids.some((id) => !Number.isInteger(id) || id < 1) || new Set(ids).size !== ids.length) {
+    return res.status(400).json({ message: 'Invalid order' })
+  }
+  let connection
+  let transactionStarted = false
+  try {
+    connection = await pool.getConnection()
+    await connection.beginTransaction()
+    transactionStarted = true
+    const caseSql = ids.map(() => 'WHEN id = ? THEN ?').join(' ')
+    const caseParams = ids.flatMap((id, index) => [id, index])
+    await connection.query(
+      `UPDATE reminders SET sort_order = CASE ${caseSql} END WHERE id IN (${ids.map(() => '?').join(', ')})`,
+      [...caseParams, ...ids]
+    )
+    await connection.commit()
+    transactionStarted = false
+    const reminders = await connection.query(`SELECT ${reminderColumns} FROM reminders ORDER BY sort_order ASC, created_at ASC`)
+    res.json(reminders)
+  } catch (error) {
+    if (transactionStarted) await connection.rollback().catch(() => {})
+    sendDatabaseError(res, error)
+  } finally {
+    connection?.release()
+  }
+})
+
 app.use(express.static(clientDist))
 app.get('*', (_req, res, next) => {
   res.sendFile(clientIndexPath, (error) => {
@@ -1029,6 +1158,7 @@ const server = app.listen(port, async () => {
   try {
     await query('SELECT 1 AS connected')
     console.log(`HomeLab API listening on :${port}; MariaDB connected`)
+    await runMigrations().catch((err) => console.error('[Migrate] 自动迁移异常:', err.message))
     await getSessionSecret().catch((err) => console.error('Failed to initialize session secret:', err.message))
   } catch (error) {
     console.error(`HomeLab API listening on :${port}; MariaDB connection failed`, error.message)

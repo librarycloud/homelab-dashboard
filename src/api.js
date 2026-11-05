@@ -52,3 +52,11 @@ export const domainApi = {
   renameCategory: (oldName, newName) => request('/domains/categories/rename', { method: 'PUT', body: JSON.stringify({ oldName, newName }) }),
   deleteCategory: (name) => request('/domains/categories/delete', { method: 'POST', body: JSON.stringify({ name }) })
 }
+
+export const reminderApi = {
+  list: () => request('/reminders'),
+  create: (payload) => request('/reminders', { method: 'POST', body: JSON.stringify(payload) }),
+  update: (id, payload) => request(`/reminders/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  reorder: (ids) => request('/reminders/reorder', { method: 'POST', body: JSON.stringify({ ids }) }),
+  remove: (id) => request(`/reminders/${id}`, { method: 'DELETE' })
+}
