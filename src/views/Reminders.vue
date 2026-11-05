@@ -2,6 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import {
   AlarmClock,
+  ArrowDown,
+  ArrowUp,
   Bell,
   Calendar,
   Check,
@@ -257,10 +259,27 @@ function recurLabel(r) {
   return '—'
 }
 
-// ── Markdown renderer ─────────────────────────────────────
+// ── Markdown renderer & Fold/Expand ───────────────────────
 function renderMd(text) {
   if (!text) return ''
   return marked.parse(text)
+}
+
+const expandedMap = ref({})
+
+function isExpanded(id) {
+  return Boolean(expandedMap.value[id])
+}
+
+function toggleExpand(id) {
+  expandedMap.value[id] = !expandedMap.value[id]
+}
+
+function isLongDesc(text) {
+  if (!text) return false
+  const trimmed = text.trim()
+  const lines = trimmed.split('\n').filter(Boolean)
+  return trimmed.length > 100 || lines.length > 2
 }
 
 // ── Dialog form ───────────────────────────────────────────
@@ -515,9 +534,24 @@ onMounted(() => store.fetchReminders())
           </div>
         </div>
 
-        <!-- Description with Markdown -->
-        <!-- eslint-disable-next-line vue/no-v-html -->
-        <div v-if="r.description" class="reminder-desc markdown-body" v-html="renderMd(r.description)" />
+        <!-- Description with Markdown (collapsible) -->
+        <div v-if="r.description" class="reminder-desc-container">
+          <!-- eslint-disable-next-line vue/no-v-html -->
+          <div
+            class="reminder-desc markdown-body"
+            :class="{ 'is-collapsed': isLongDesc(r.description) && !isExpanded(r.id) }"
+            v-html="renderMd(r.description)"
+          />
+          <button
+            v-if="isLongDesc(r.description)"
+            type="button"
+            class="desc-expand-btn"
+            @click.stop="toggleExpand(r.id)"
+          >
+            <span>{{ isExpanded(r.id) ? '收起详情' : '展开全文' }}</span>
+            <el-icon><ArrowUp v-if="isExpanded(r.id)" /><ArrowDown v-else /></el-icon>
+          </button>
+        </div>
 
         <!-- Action button -->
         <div v-if="r.action_url" class="reminder-action">
