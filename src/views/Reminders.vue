@@ -148,57 +148,84 @@ function getCycleInfo(r) {
     const hasStart = Boolean(r.start_month && r.start_day)
     const isCrossYear = hasStart && (r.start_month > r.recur_month || (r.start_month === r.recur_month && r.start_day > r.recur_day))
 
-    // Deadline for currentYear
-    const deadlineCurrYear = new Date(currentYear, r.recur_month - 1, r.recur_day, 23, 59, 59)
-    
-    // Check if currentYear's cycle was already completed
-    const isCurrYearDone = r.last_completed_cycle === String(currentYear) ||
-      (r.status === 'done' && (!r.last_completed_cycle || r.last_completed_cycle === String(currentYear)))
-
-    let targetYear = currentYear
-    if (now.getTime() > deadlineCurrYear.getTime()) {
-      if (isCurrYearDone) {
-        // Completed this year -> target advances to next year
-        targetYear = currentYear + 1
-      } else {
-        // Not completed -> target stays currentYear as overdue
-        targetYear = currentYear
-      }
-    } else {
-      targetYear = currentYear
+    let lastCompletedYear = null
+    if (r.last_completed_cycle) {
+      const parsed = parseInt(r.last_completed_cycle, 10)
+      if (!isNaN(parsed)) lastCompletedYear = parsed
+    } else if (r.status === 'done') {
+      lastCompletedYear = currentYear
     }
 
-    let end = new Date(targetYear, r.recur_month - 1, r.recur_day, 23, 59, 59)
+    // Determine target year
+    let targetYear = currentYear
+    if (lastCompletedYear !== null && lastCompletedYear >= currentYear) {
+      targetYear = lastCompletedYear + 1
+    }
+
+    // Compute deadline for targetYear
+    const end = new Date(targetYear, r.recur_month - 1, r.recur_day, 23, 59, 59)
+
+    // Compute window open for targetYear
+    let windowOpen
     let start = null
     if (hasStart) {
       const startYear = isCrossYear ? targetYear - 1 : targetYear
       start = new Date(startYear, r.start_month - 1, r.start_day, 0, 0, 0)
+      const remindDays = r.remind_days_before ?? 30
+      windowOpen = new Date(start.getTime() - remindDays * msPerDay)
+    } else {
+      const remindDays = r.remind_days_before ?? 30
+      windowOpen = new Date(end.getTime() - remindDays * msPerDay)
     }
 
-    const cycleKey = String(targetYear)
-    const cycleLabel = `${targetYear}年`
+    let isDone = false
+    let isOverdue = false
+    let isActive = false
+    const daysToWindowOpen = Math.ceil((windowOpen.getTime() - now.getTime()) / msPerDay)
+    const daysToEnd = Math.ceil((end.getTime() - now.getTime()) / msPerDay)
 
-    // Is target cycle completed?
-    let isDone = r.last_completed_cycle === cycleKey
-    // If resting between completion of previous year and opening of next year's window
-    if (!isDone && isCurrYearDone && start && now.getTime() < start.getTime()) {
-      isDone = true
+    if (lastCompletedYear !== null && lastCompletedYear >= currentYear) {
+      // Completed current cycle or ahead:
+      // If the window for targetYear has NOT opened yet, stay in COMPLETED state!
+      if (now.getTime() < windowOpen.getTime()) {
+        isDone = true
+      } else {
+        // Window has opened -> automatically wakes up!
+        isDone = false
+        if (now.getTime() > end.getTime()) {
+          isOverdue = true
+        } else {
+          isActive = true
+        }
+      }
+    } else {
+      // Current cycle not completed
+      if (now.getTime() > end.getTime()) {
+        isOverdue = true
+        isActive = true
+      } else if (now.getTime() >= windowOpen.getTime()) {
+        isActive = true
+      }
     }
 
-    const isOverdue = !isDone && (now.getTime() > end.getTime())
-    const overdueDays = isOverdue ? Math.ceil((now.getTime() - end.getTime()) / msPerDay) : 0
+    const overdueDays = isOverdue ? Math.max(1, Math.ceil((now.getTime() - end.getTime()) / msPerDay)) : 0
 
     return {
-      cycleKey,
-      cycleLabel,
+      cycleKey: String(targetYear),
+      cycleLabel: `${targetYear}年`,
       targetYear,
+      lastCompletedYear,
       start,
       end,
+      windowOpen,
+      daysToWindowOpen,
+      daysToEnd,
       isPeriod: hasStart,
       isDone,
       isOverdue,
+      isActive,
       overdueDays,
-      lastDoneCycle: r.last_completed_cycle
+      lastDoneCycle: lastCompletedYear ? `${lastCompletedYear}年` : null
     }
   }
 
@@ -206,51 +233,87 @@ function getCycleInfo(r) {
   if (r.recur_type === 'monthly' && r.recur_day) {
     const hasStart = Boolean(r.start_day)
     const fmtMonthCycle = (y, m) => `${y}-${String(m + 1).padStart(2, '0')}`
-    
-    const currCycleKey = fmtMonthCycle(currentYear, currentMonth)
-    const deadlineCurrMonth = new Date(currentYear, currentMonth, r.recur_day, 23, 59, 59)
-    const isCurrMonthDone = r.last_completed_cycle === currCycleKey ||
-      (r.status === 'done' && (!r.last_completed_cycle || r.last_completed_cycle === currCycleKey))
 
-    let targetY = currentYear
-    let targetM = currentMonth
+    let lastCompletedIndex = null
+    let lastCompletedLabel = null
+    if (r.last_completed_cycle && r.last_completed_cycle.includes('-')) {
+      const [yStr, mStr] = r.last_completed_cycle.split('-')
+      const py = parseInt(yStr, 10)
+      const pm = parseInt(mStr, 10) - 1
+      if (!isNaN(py) && !isNaN(pm)) {
+        lastCompletedIndex = py * 12 + pm
+        lastCompletedLabel = `${pm + 1}月`
+      }
+    } else if (r.status === 'done') {
+      lastCompletedIndex = currentYear * 12 + currentMonth
+      lastCompletedLabel = `${currentMonth + 1}月`
+    }
 
-    if (now.getTime() > deadlineCurrMonth.getTime()) {
-      if (isCurrMonthDone) {
-        targetM += 1
-        if (targetM > 11) {
-          targetM = 0
-          targetY += 1
-        }
+    const currentIndex = currentYear * 12 + currentMonth
+
+    let targetIndex = currentIndex
+    if (lastCompletedIndex !== null && lastCompletedIndex >= currentIndex) {
+      targetIndex = lastCompletedIndex + 1
+    }
+
+    const targetY = Math.floor(targetIndex / 12)
+    const targetM = targetIndex % 12
+
+    const end = new Date(targetY, targetM, r.recur_day, 23, 59, 59)
+
+    let windowOpen
+    let start = null
+    if (hasStart) {
+      start = new Date(targetY, targetM, r.start_day, 0, 0, 0)
+      const remindDays = r.remind_days_before ?? 5
+      windowOpen = new Date(start.getTime() - remindDays * msPerDay)
+    } else {
+      const remindDays = r.remind_days_before ?? 5
+      windowOpen = new Date(end.getTime() - remindDays * msPerDay)
+    }
+
+    let isDone = false
+    let isOverdue = false
+    let isActive = false
+    const daysToEnd = Math.ceil((end.getTime() - now.getTime()) / msPerDay)
+    const daysToWindowOpen = Math.ceil((windowOpen.getTime() - now.getTime()) / msPerDay)
+
+    if (lastCompletedIndex !== null && lastCompletedIndex >= currentIndex) {
+      if (now.getTime() < windowOpen.getTime()) {
+        isDone = true
       } else {
-        targetY = currentYear
-        targetM = currentMonth
+        isDone = false
+        if (now.getTime() > end.getTime()) {
+          isOverdue = true
+        } else {
+          isActive = true
+        }
+      }
+    } else {
+      if (now.getTime() > end.getTime()) {
+        isOverdue = true
+        isActive = true
+      } else if (now.getTime() >= windowOpen.getTime()) {
+        isActive = true
       }
     }
 
-    const cycleKey = fmtMonthCycle(targetY, targetM)
-    const cycleLabel = `${targetM + 1}月`
-    const end = new Date(targetY, targetM, r.recur_day, 23, 59, 59)
-    const start = hasStart ? new Date(targetY, targetM, r.start_day, 0, 0, 0) : null
-
-    let isDone = r.last_completed_cycle === cycleKey
-    if (!isDone && isCurrMonthDone && start && now.getTime() < start.getTime()) {
-      isDone = true
-    }
-
-    const isOverdue = !isDone && (now.getTime() > end.getTime())
-    const overdueDays = isOverdue ? Math.ceil((now.getTime() - end.getTime()) / msPerDay) : 0
+    const overdueDays = isOverdue ? Math.max(1, Math.ceil((now.getTime() - end.getTime()) / msPerDay)) : 0
 
     return {
-      cycleKey,
-      cycleLabel,
+      cycleKey: fmtMonthCycle(targetY, targetM),
+      cycleLabel: `${targetM + 1}月`,
       start,
       end,
+      windowOpen,
+      daysToWindowOpen,
+      daysToEnd,
       isPeriod: hasStart,
       isDone,
       isOverdue,
+      isActive,
       overdueDays,
-      lastDoneCycle: r.last_completed_cycle
+      lastDoneCycle: lastCompletedLabel
     }
   }
 
@@ -265,36 +328,30 @@ function getReminderState(r) {
   const win = getCycleInfo(r)
   if (!win || !win.end) {
     if (r.status === 'done') {
-      return { level: 'done', label: '已完成', badgeClass: 'level-done', progress: 100, isActive: false, isDone: true }
+      return { level: 'done', label: '已完成', badgeClass: 'level-done', progress: 100, isActive: false, isDone: true, isPeriodProgress: false, isPeriod: false }
     }
-    return { level: 'ok', label: '—', badgeClass: 'level-ok', progress: 0, isActive: false, isDone: false }
+    return { level: 'ok', label: '—', badgeClass: 'level-ok', progress: 0, isActive: false, isDone: false, isPeriodProgress: false, isPeriod: false }
   }
 
   const now = Date.now()
   const msPerDay = 86400000
+  const isPeriod = Boolean(win.isPeriod)
 
-  // 1. If currently completed for this cycle (or resting before next cycle opens)
+  // 1. If currently in COMPLETED / RESTING state
   if (win.isDone) {
-    if (win.start && now < win.start.getTime()) {
-      const daysToStart = Math.ceil((win.start.getTime() - now) / msPerDay)
-      const prevPrefix = win.lastDoneCycle ? `${win.lastDoneCycle}已办结 · ` : '已完成 · '
-      return {
-        level: 'done',
-        label: `${prevPrefix}距下期 ${daysToStart} 天`,
-        badgeClass: 'level-done',
-        progress: 100,
-        isActive: false,
-        isDone: true,
-        daysToStart
-      }
-    }
+    const daysWait = win.daysToWindowOpen ?? win.daysToEnd
+    const prevPrefix = win.lastDoneCycle ? `${win.lastDoneCycle}已办结 · ` : '已完成 · '
+    const label = daysWait > 0 ? `${prevPrefix}距下期 ${daysWait} 天` : (win.lastDoneCycle ? `${win.lastDoneCycle}已办结` : '已完成')
     return {
       level: 'done',
-      label: win.cycleLabel ? `${win.cycleLabel}已办结` : '已完成',
+      label,
       badgeClass: 'level-done',
       progress: 100,
       isActive: false,
-      isDone: true
+      isDone: true,
+      isPeriodProgress: false,
+      isPeriod,
+      daysWait
     }
   }
 
@@ -307,9 +364,11 @@ function getReminderState(r) {
       badgeClass: 'level-critical',
       progress: 100,
       isExpired: true,
-      isActive: true, // Needs action
+      isActive: true,
       isDone: false,
       isOverdue: true,
+      isPeriodProgress: false,
+      isPeriod,
       overdueDays: win.overdueDays
     }
   }
@@ -330,7 +389,9 @@ function getReminderState(r) {
         progress: 0,
         isUpcoming: true,
         isActive: false,
-        isDone: false
+        isDone: false,
+        isPeriodProgress: false,
+        isPeriod
       }
     }
 
@@ -349,43 +410,34 @@ function getReminderState(r) {
           elapsedDays,
           progress,
           isActive: true,
-          isDone: false
-        }
-      }
-      if (daysToEnd <= 7) {
-        return {
-          level: 'warning',
-          label: `办理期中 · 还剩 ${daysToEnd} 天`,
-          badgeClass: 'level-warning',
-          daysToEnd,
-          totalDays,
-          elapsedDays,
-          progress,
-          isActive: true,
-          isDone: false
+          isDone: false,
+          isPeriodProgress: true,
+          isPeriod
         }
       }
       return {
-        level: 'active',
+        level: daysToEnd <= 7 ? 'warning' : 'active',
         label: `办理期中 · 还剩 ${daysToEnd} 天`,
-        badgeClass: 'level-active',
+        badgeClass: daysToEnd <= 7 ? 'level-warning' : 'level-active',
         daysToEnd,
         totalDays,
         elapsedDays,
         progress,
         isActive: true,
-        isDone: false
+        isDone: false,
+        isPeriodProgress: true,
+        isPeriod
       }
     }
   }
 
-  // 4. Single point in time deadline
+  // 4. Single point in time deadline (NO start date)
   const days = Math.ceil((win.end.getTime() - now) / msPerDay)
-  if (days < 0) return { level: 'critical', label: '已逾期！', badgeClass: 'level-critical', days, isActive: true, isDone: false, isOverdue: true }
-  if (days === 0) return { level: 'critical', label: '今天截止！', badgeClass: 'level-critical', days, isActive: true, isDone: false }
-  if (days <= 3) return { level: 'critical', label: `仅剩 ${days} 天`, badgeClass: 'level-critical', days, isActive: true, isDone: false }
-  if (days <= (r.remind_days_before ?? 30)) return { level: 'warning', label: `还有 ${days} 天`, badgeClass: 'level-warning', days, isActive: true, isDone: false }
-  return { level: 'ok', label: `还有 ${days} 天`, badgeClass: 'level-ok', days, isActive: false, isDone: false }
+  const remindBefore = r.remind_days_before ?? 30
+  if (days <= 0) return { level: 'critical', label: '今天截止！', badgeClass: 'level-critical', days, isActive: true, isDone: false, isPeriodProgress: false, isPeriod }
+  if (days <= 3) return { level: 'critical', label: `仅剩 ${days} 天`, badgeClass: 'level-critical', days, isActive: true, isDone: false, isPeriodProgress: false, isPeriod }
+  if (days <= remindBefore) return { level: 'warning', label: `还有 ${days} 天`, badgeClass: 'level-warning', days, isActive: true, isDone: false, isPeriodProgress: false, isPeriod }
+  return { level: 'ok', label: `还有 ${days} 天`, badgeClass: 'level-ok', days, isActive: false, isDone: false, isPeriodProgress: false, isPeriod }
 }
 
 function formatPeriodText(r) {
@@ -748,8 +800,8 @@ onMounted(() => store.fetchReminders())
           <span v-if="!getReminderState(r).isPeriod" class="due-sub">提前 {{ r.remind_days_before }} 天提醒</span>
         </div>
 
-        <!-- Period Progress Bar (shown when currently in window) -->
-        <div v-if="getReminderState(r).isActive" class="period-progress-wrap">
+        <!-- Period Progress Bar (shown only when period task is in window and has valid stats) -->
+        <div v-if="getReminderState(r).isPeriodProgress" class="period-progress-wrap">
           <div class="period-progress-bar">
             <div
               class="period-progress-fill"

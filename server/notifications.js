@@ -97,61 +97,146 @@ function getCycleInfo(r) {
   if (r.recur_type === 'yearly' && r.recur_month && r.recur_day) {
     const hasStart = Boolean(r.start_month && r.start_day)
     const isCrossYear = hasStart && (r.start_month > r.recur_month || (r.start_month === r.recur_month && r.start_day > r.recur_day))
-    const deadlineCurrYear = new Date(currentYear, r.recur_month - 1, r.recur_day, 23, 59, 59)
-    const isCurrYearDone = r.last_completed_cycle === String(currentYear) ||
-      (r.status === 'done' && (!r.last_completed_cycle || r.last_completed_cycle === String(currentYear)))
 
-    let targetYear = currentYear
-    if (now.getTime() > deadlineCurrYear.getTime()) {
-      targetYear = isCurrYearDone ? currentYear + 1 : currentYear
+    let lastCompletedYear = null
+    if (r.last_completed_cycle) {
+      const parsed = parseInt(r.last_completed_cycle, 10)
+      if (!isNaN(parsed)) lastCompletedYear = parsed
+    } else if (r.status === 'done') {
+      lastCompletedYear = currentYear
     }
 
-    let end = new Date(targetYear, r.recur_month - 1, r.recur_day, 23, 59, 59)
+    let targetYear = currentYear
+    if (lastCompletedYear !== null && lastCompletedYear >= currentYear) {
+      targetYear = lastCompletedYear + 1
+    }
+
+    const end = new Date(targetYear, r.recur_month - 1, r.recur_day, 23, 59, 59)
+
+    let windowOpen
     let start = null
     if (hasStart) {
       const startYear = isCrossYear ? targetYear - 1 : targetYear
       start = new Date(startYear, r.start_month - 1, r.start_day, 0, 0, 0)
+      const remindDays = r.remind_days_before ?? 30
+      windowOpen = new Date(start.getTime() - remindDays * msPerDay)
+    } else {
+      const remindDays = r.remind_days_before ?? 30
+      windowOpen = new Date(end.getTime() - remindDays * msPerDay)
     }
 
-    const cycleKey = String(targetYear)
-    const cycleLabel = `${targetYear}年`
-    let isDone = r.last_completed_cycle === cycleKey
-    if (!isDone && isCurrYearDone && start && now.getTime() < start.getTime()) {
-      isDone = true
-    }
-    const isOverdue = !isDone && now.getTime() > end.getTime()
+    let isDone = false
+    let isOverdue = false
+    let isActive = false
 
-    return { cycleKey, cycleLabel, targetYear, start, end, isPeriod: hasStart, isDone, isOverdue }
+    if (lastCompletedYear !== null && lastCompletedYear >= currentYear) {
+      if (now.getTime() < windowOpen.getTime()) {
+        isDone = true
+      } else {
+        isDone = false
+        if (now.getTime() > end.getTime()) {
+          isOverdue = true
+        } else {
+          isActive = true
+        }
+      }
+    } else {
+      if (now.getTime() > end.getTime()) {
+        isOverdue = true
+        isActive = true
+      } else if (now.getTime() >= windowOpen.getTime()) {
+        isActive = true
+      }
+    }
+
+    return {
+      cycleKey: String(targetYear),
+      cycleLabel: `${targetYear}年`,
+      targetYear,
+      start,
+      end,
+      windowOpen,
+      isPeriod: hasStart,
+      isDone,
+      isOverdue,
+      isActive
+    }
   }
 
   if (r.recur_type === 'monthly' && r.recur_day) {
     const hasStart = Boolean(r.start_day)
     const fmtMonthCycle = (y, m) => `${y}-${String(m + 1).padStart(2, '0')}`
-    const currCycleKey = fmtMonthCycle(currentYear, currentMonth)
-    const deadlineCurrMonth = new Date(currentYear, currentMonth, r.recur_day, 23, 59, 59)
-    const isCurrMonthDone = r.last_completed_cycle === currCycleKey ||
-      (r.status === 'done' && (!r.last_completed_cycle || r.last_completed_cycle === currCycleKey))
 
-    let targetY = currentYear
-    let targetM = currentMonth
-    if (now.getTime() > deadlineCurrMonth.getTime()) {
-      if (isCurrMonthDone) {
-        targetM += 1
-        if (targetM > 11) { targetM = 0; targetY += 1 }
+    let lastCompletedIndex = null
+    if (r.last_completed_cycle && r.last_completed_cycle.includes('-')) {
+      const [yStr, mStr] = r.last_completed_cycle.split('-')
+      const py = parseInt(yStr, 10)
+      const pm = parseInt(mStr, 10) - 1
+      if (!isNaN(py) && !isNaN(pm)) {
+        lastCompletedIndex = py * 12 + pm
+      }
+    } else if (r.status === 'done') {
+      lastCompletedIndex = currentYear * 12 + currentMonth
+    }
+
+    const currentIndex = currentYear * 12 + currentMonth
+
+    let targetIndex = currentIndex
+    if (lastCompletedIndex !== null && lastCompletedIndex >= currentIndex) {
+      targetIndex = lastCompletedIndex + 1
+    }
+
+    const targetY = Math.floor(targetIndex / 12)
+    const targetM = targetIndex % 12
+
+    const end = new Date(targetY, targetM, r.recur_day, 23, 59, 59)
+
+    let windowOpen
+    let start = null
+    if (hasStart) {
+      start = new Date(targetY, targetM, r.start_day, 0, 0, 0)
+      const remindDays = r.remind_days_before ?? 5
+      windowOpen = new Date(start.getTime() - remindDays * msPerDay)
+    } else {
+      const remindDays = r.remind_days_before ?? 5
+      windowOpen = new Date(end.getTime() - remindDays * msPerDay)
+    }
+
+    let isDone = false
+    let isOverdue = false
+    let isActive = false
+
+    if (lastCompletedIndex !== null && lastCompletedIndex >= currentIndex) {
+      if (now.getTime() < windowOpen.getTime()) {
+        isDone = true
+      } else {
+        isDone = false
+        if (now.getTime() > end.getTime()) {
+          isOverdue = true
+        } else {
+          isActive = true
+        }
+      }
+    } else {
+      if (now.getTime() > end.getTime()) {
+        isOverdue = true
+        isActive = true
+      } else if (now.getTime() >= windowOpen.getTime()) {
+        isActive = true
       }
     }
 
-    const cycleKey = fmtMonthCycle(targetY, targetM)
-    const cycleLabel = `${targetM + 1}月`
-    const end = new Date(targetY, targetM, r.recur_day, 23, 59, 59)
-    const start = hasStart ? new Date(targetY, targetM, r.start_day, 0, 0, 0) : null
-    let isDone = r.last_completed_cycle === cycleKey
-    if (!isDone && isCurrMonthDone && start && now.getTime() < start.getTime()) {
-      isDone = true
+    return {
+      cycleKey: fmtMonthCycle(targetY, targetM),
+      cycleLabel: `${targetM + 1}月`,
+      start,
+      end,
+      windowOpen,
+      isPeriod: hasStart,
+      isDone,
+      isOverdue,
+      isActive
     }
-    const isOverdue = !isDone && now.getTime() > end.getTime()
-
-    return { cycleKey, cycleLabel, start, end, isPeriod: hasStart, isDone, isOverdue }
   }
 
   return null
