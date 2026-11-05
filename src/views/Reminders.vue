@@ -406,7 +406,7 @@ onMounted(() => store.fetchReminders())
       <p>管理税务合规、周期事项、时间段待办与续费</p>
     </div>
     <div class="heading-actions">
-      <el-button plain :loading="loading" @click="store.fetchReminders()">
+      <el-button class="refresh-btn" plain :loading="loading" @click="store.fetchReminders()">
         <el-icon><Refresh /></el-icon>刷新
       </el-button>
       <el-button type="primary" class="add-reminder-btn" @click="openAdd">
@@ -451,6 +451,7 @@ onMounted(() => store.fetchReminders())
         <div class="reminder-head">
           <!-- Checkbox -->
           <button
+            type="button"
             class="done-check"
             :class="{ checked: r.status === 'done' }"
             :title="r.status === 'done' ? '标记为待办' : '标记为已完成'"
@@ -550,7 +551,7 @@ onMounted(() => store.fetchReminders())
         </div>
         <div>
           <label>状态</label>
-          <el-select v-model="form.status" class="full-w">
+          <el-select v-model="form.status" popper-class="homelab-select-popper" class="full-w">
             <el-option label="待办" value="pending" />
             <el-option label="已完成" value="done" />
             <el-option label="已暂缓" value="snoozed" />
@@ -585,7 +586,7 @@ onMounted(() => store.fetchReminders())
 
       <div class="form-row">
         <label>重复频率</label>
-        <el-select v-model="form.recur_type" class="full-w">
+        <el-select v-model="form.recur_type" popper-class="homelab-select-popper" class="full-w">
           <el-option label="每年重复" value="yearly" />
           <el-option label="每月重复" value="monthly" />
           <el-option label="单次" value="once" />

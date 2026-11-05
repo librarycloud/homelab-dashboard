@@ -23,6 +23,50 @@ html.homelab-light .el-message-box{background:#fff!important;border-color:#d6e0e
 .app-shell:not(.light) .settings-panel .el-select__wrapper{background:#121b25!important;box-shadow:0 0 0 1px #273442 inset!important}.app-shell:not(.light) .settings-panel .el-select__selected-item,.app-shell:not(.light) .settings-panel .el-select__placeholder{color:#d8e2ec!important}.homelab-light .app-shell.light .settings-panel .el-select__wrapper{background:#fff!important;box-shadow:0 0 0 1px #d6e0e7 inset!important}.homelab-light .app-shell.light .settings-panel .el-select__selected-item,.homelab-light .app-shell.light .settings-panel .el-select__placeholder{color:#2d3b46!important}
 .app-shell:not(.light) .settings-panel .el-input-number{background:#0d151d;box-shadow:0 0 0 1px #293846 inset;border-radius:4px}.app-shell:not(.light) .settings-panel .el-input-number__decrease,.app-shell:not(.light) .settings-panel .el-input-number__increase{background:#151f29;color:#8394a4;border-color:#293846}.app-shell:not(.light) .settings-panel .el-input-number__decrease:hover,.app-shell:not(.light) .settings-panel .el-input-number__increase:hover{color:#65e0c4}.app-shell:not(.light) .settings-panel .el-input-number .el-input__inner{color:#d8e2ec!important}.homelab-light .app-shell.light .settings-panel .el-input-number{background:#fff;box-shadow:0 0 0 1px #d6e0e7 inset;border-radius:4px}.homelab-light .app-shell.light .settings-panel .el-input-number__decrease,.homelab-light .app-shell.light .settings-panel .el-input-number__increase{background:#f4f7f9;color:#71818f;border-color:#d6e0e7}.homelab-light .app-shell.light .settings-panel .el-input-number__decrease:hover,.homelab-light .app-shell.light .settings-panel .el-input-number__increase:hover{color:var(--homelab-primary)}.homelab-light .app-shell.light .settings-panel .el-input-number .el-input__inner{color:#2d3b46!important}
 
+/* Global dark theme overrides for Element Plus poppers and inputs */
+html:not(.homelab-light) .el-select__popper.el-popper,
+html:not(.homelab-light) .el-popper.is-light,
+html:not(.homelab-light) .el-select-dropdown {
+  background: #111a23 !important;
+  border-color: #2a3947 !important;
+}
+html:not(.homelab-light) .el-popper.is-light .el-popper__arrow:before {
+  background: #111a23 !important;
+  border-color: #2a3947 !important;
+}
+html:not(.homelab-light) .el-select-dropdown__item {
+  color: #b9c6d3 !important;
+  background: transparent !important;
+}
+html:not(.homelab-light) .el-select-dropdown__item.hover,
+html:not(.homelab-light) .el-select-dropdown__item:hover {
+  background: #1d2a35 !important;
+  color: #e7edf5 !important;
+}
+html:not(.homelab-light) .el-select-dropdown__item.is-selected {
+  color: var(--homelab-primary) !important;
+  font-weight: 600 !important;
+}
+html:not(.homelab-light) .el-input-number__decrease,
+html:not(.homelab-light) .el-input-number__increase {
+  background: #151f29 !important;
+  color: #8394a4 !important;
+  border-color: #243545 !important;
+}
+html:not(.homelab-light) .el-input-number__decrease:hover,
+html:not(.homelab-light) .el-input-number__increase:hover {
+  background: #1d2a35 !important;
+  color: var(--homelab-primary) !important;
+  border-color: var(--homelab-primary) !important;
+}
+html:not(.homelab-light) .el-input-number .el-input__wrapper {
+  background: #0d151d !important;
+  box-shadow: 0 0 0 1px #243545 inset !important;
+}
+html:not(.homelab-light) .el-input-number .el-input__inner {
+  color: #d8e2ec !important;
+}
+
 /* Fix header buttons in dark mode */
 html:not(.homelab-light) .header-actions > .el-button:not(.el-button--primary) {
   background: #111a23;

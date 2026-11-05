@@ -78,21 +78,41 @@
   flex-shrink: 0;
   width: 20px;
   height: 20px;
-  border-radius: 5px;
-  border: 2px solid #3a5265;
+  border-radius: 50%;
+  border: 1.5px solid #384d5f;
   background: transparent;
   cursor: pointer;
   display: grid;
   place-items: center;
   color: transparent;
-  transition: .15s;
+  transition: all .2s cubic-bezier(0.4, 0, 0.2, 1);
   margin-top: 2px;
+  padding: 0;
+  outline: none !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent;
 }
-.done-check:hover { border-color: var(--homelab-primary); }
-.done-check.checked {
-  background: var(--homelab-primary-dark-soft);
+.done-check:hover {
   border-color: var(--homelab-primary);
-  color: var(--homelab-primary);
+  background: rgba(var(--homelab-primary-rgb), .1);
+  transform: scale(1.05);
+}
+.done-check:active {
+  transform: scale(0.95);
+}
+.done-check:focus,
+.done-check:focus-visible {
+  outline: none !important;
+}
+.done-check.checked {
+  background: var(--homelab-primary) !important;
+  border-color: var(--homelab-primary) !important;
+  color: var(--homelab-primary-contrast, #ffffff) !important;
+}
+.done-check .el-icon {
+  font-size: 11px;
+  font-weight: 800;
+  stroke-width: 2px;
 }
 
 /* Title + tags */
@@ -385,6 +405,28 @@ a.desc-link:hover { opacity: .8; }
 .reminder-dialog .el-select .el-input__wrapper { background: #0d141b !important; }
 .reminder-dialog .el-input-number { width: 100%; }
 .reminder-dialog .el-input-number .el-input__wrapper { background: #0d141b !important; }
+html:not(.homelab-light) .reminder-dialog .el-input-number__decrease,
+html:not(.homelab-light) .reminder-dialog .el-input-number__increase {
+  background: #151f29 !important;
+  color: #8da4be !important;
+  border-color: #243545 !important;
+}
+html:not(.homelab-light) .reminder-dialog .el-input-number__decrease:hover,
+html:not(.homelab-light) .reminder-dialog .el-input-number__increase:hover {
+  background: #1d2a35 !important;
+  color: var(--homelab-primary) !important;
+  border-color: var(--homelab-primary) !important;
+}
+html:not(.homelab-light) .reminder-dialog .el-input-number .el-input__inner {
+  color: #d8e2ec !important;
+}
+html:not(.homelab-light) .reminder-dialog input[type="date"] {
+  color-scheme: dark;
+}
+html:not(.homelab-light) .reminder-dialog input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.85);
+  cursor: pointer;
+}
 .reminder-dialog .el-input__count,
 .reminder-dialog .el-input__count-inner { background: transparent !important; color: #748395 !important; }
 .reminder-dialog .el-button:not(.el-button--primary) {
@@ -451,7 +493,19 @@ html.homelab-light .reminder-desc pre code { color: #2b3945; }
 html.homelab-light .cat-btn { border-color: #d6e0e7; color: #6e7f8d; }
 html.homelab-light .cat-btn:hover { background: #f1f5f8; border-color: #b8c8d4; color: #344652; }
 html.homelab-light .cat-btn.selected { background: var(--homelab-primary-soft); border-color: var(--homelab-primary); color: var(--homelab-primary); }
-html.homelab-light .done-check { border-color: #c0d0dc; }
+html.homelab-light .done-check {
+  border-color: #cbd5e1;
+  background: #ffffff;
+}
+html.homelab-light .done-check:hover {
+  border-color: var(--homelab-primary);
+  background: var(--homelab-primary-soft);
+}
+html.homelab-light .done-check.checked {
+  background: var(--homelab-primary) !important;
+  border-color: var(--homelab-primary) !important;
+  color: #ffffff !important;
+}
 html.homelab-light .action-link-btn { background: #fff; }
 html.homelab-light .action-link-btn:hover { background: var(--homelab-primary-soft); }
 html.homelab-light .mode-btn { background: #f8fafc; border-color: #dce4ec; }
