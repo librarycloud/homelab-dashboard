@@ -449,6 +449,12 @@ html:not(.homelab-light) .reminder-dialog input[type="date"]::-webkit-calendar-p
 html:not(.homelab-light) .reminder-action-menu { background: #111a23 !important; border-color: var(--homelab-primary-dark-soft) !important; }
 html:not(.homelab-light) .reminder-action-menu .el-dropdown-menu__item { background: #111a23 !important; color: #d8e2ec !important; }
 html:not(.homelab-light) .reminder-action-menu .el-dropdown-menu__item:not(.is-disabled):hover { background: var(--homelab-primary-dark-soft) !important; color: var(--homelab-primary) !important; }
+html:not(.homelab-light) .reminder-action-menu .el-dropdown-menu__item--divided {
+  border-top: 1px solid #243545 !important;
+}
+html:not(.homelab-light) .reminder-action-menu .el-dropdown-menu__item--divided:before {
+  background-color: #243545 !important;
+}
 
 /* ── Light theme overrides ───────────────────────────────── */
 html.homelab-light .reminder-card { background: #fff; border-color: #dfe6ec; border-left-color: #c8d6e0; }
@@ -526,6 +532,12 @@ html.homelab-light .reminder-dialog .el-textarea__inner {
 html.homelab-light .reminder-action-menu { background: #fff !important; border-color: #d6e0e7 !important; }
 html.homelab-light .reminder-action-menu .el-dropdown-menu__item { background: #fff !important; color: #526573 !important; }
 html.homelab-light .reminder-action-menu .el-dropdown-menu__item:not(.is-disabled):hover { background: var(--homelab-primary-soft) !important; color: var(--homelab-primary) !important; }
+html.homelab-light .reminder-action-menu .el-dropdown-menu__item--divided {
+  border-top: 1px solid #e2e8f0 !important;
+}
+html.homelab-light .reminder-action-menu .el-dropdown-menu__item--divided:before {
+  background-color: #e2e8f0 !important;
+}
 
 /* ── Responsive ──────────────────────────────────────────── */
 @media (max-width: 720px) {

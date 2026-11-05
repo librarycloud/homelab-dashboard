@@ -66,6 +66,18 @@ html:not(.homelab-light) .el-input-number .el-input__wrapper {
 html:not(.homelab-light) .el-input-number .el-input__inner {
   color: #d8e2ec !important;
 }
+html:not(.homelab-light) .el-dropdown-menu__item--divided {
+  border-top: 1px solid #243545 !important;
+}
+html:not(.homelab-light) .el-dropdown-menu__item--divided:before {
+  background-color: #243545 !important;
+}
+html.homelab-light .el-dropdown-menu__item--divided {
+  border-top: 1px solid #e2e8f0 !important;
+}
+html.homelab-light .el-dropdown-menu__item--divided:before {
+  background-color: #e2e8f0 !important;
+}
 
 /* Fix header buttons in dark mode */
 html:not(.homelab-light) .header-actions > .el-button:not(.el-button--primary) {
