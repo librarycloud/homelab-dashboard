@@ -345,7 +345,7 @@ function statusTagInfo(r) {
   return { label: '待办', className: 'status-pending' }
 }
 
-function handleCardClick(r, event) {
+function handleTopClick(r, event) {
   if (!isLongDesc(r.description)) return
   if (event.target.closest('button, a, .el-dropdown, .done-check, .action-link-btn, .card-menu, input, textarea')) {
     return
@@ -551,10 +551,16 @@ onMounted(() => store.fetchReminders())
           'is-expanded': isExpanded(r.id)
         }
       ]"
-      @click="handleCardClick(r, $event)"
     >
       <div class="reminder-main">
-        <div class="reminder-head">
+        <!-- 上半部分：点击可触发展开/折叠 -->
+        <div
+          class="reminder-top-area"
+          :class="{ 'can-toggle': isLongDesc(r.description) }"
+          :title="isLongDesc(r.description) ? (isExpanded(r.id) ? '点击顶部区域收起' : '点击顶部区域展开详情') : ''"
+          @click="handleTopClick(r, $event)"
+        >
+          <div class="reminder-head">
           <!-- Checkbox -->
           <button
             type="button"
@@ -621,26 +627,26 @@ onMounted(() => store.fetchReminders())
             <span>共 {{ getReminderState(r).totalDays }} 天 · 距截止还剩 <strong>{{ getReminderState(r).daysToEnd }}</strong> 天</span>
           </div>
         </div>
+      </div>
 
-        <!-- Description with Markdown (collapsible) -->
-        <div v-if="r.description" class="reminder-desc-container">
-          <!-- eslint-disable-next-line vue/no-v-html -->
-          <div
-            class="reminder-desc markdown-body"
-            :class="{ 'is-collapsed': isLongDesc(r.description) && !isExpanded(r.id) }"
-            :title="isLongDesc(r.description) && !isExpanded(r.id) ? '点击卡片展开详情' : ''"
-            v-html="renderMd(r.description)"
-          />
-          <button
-            v-if="isLongDesc(r.description)"
-            type="button"
-            class="desc-expand-btn"
-            @click.stop="toggleExpand(r.id)"
-          >
-            <span>{{ isExpanded(r.id) ? '收起详情' : '展开全文' }}</span>
-            <el-icon><ArrowUp v-if="isExpanded(r.id)" /><ArrowDown v-else /></el-icon>
-          </button>
-        </div>
+      <!-- 下半部分：描述区（独立，不监听折叠事件，方便用户选词复制） -->
+      <div v-if="r.description" class="reminder-desc-container">
+        <!-- eslint-disable-next-line vue/no-v-html -->
+        <div
+          class="reminder-desc markdown-body"
+          :class="{ 'is-collapsed': isLongDesc(r.description) && !isExpanded(r.id) }"
+          v-html="renderMd(r.description)"
+        />
+        <button
+          v-if="isLongDesc(r.description)"
+          type="button"
+          class="desc-expand-btn"
+          @click.stop="toggleExpand(r.id)"
+        >
+          <span>{{ isExpanded(r.id) ? '收起详情' : '展开全文' }}</span>
+          <el-icon><ArrowUp v-if="isExpanded(r.id)" /><ArrowDown v-else /></el-icon>
+        </button>
+      </div>
 
         <!-- Action button -->
         <div v-if="r.action_url" class="reminder-action">

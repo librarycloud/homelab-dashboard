@@ -74,7 +74,8 @@
   transition: border-color .2s, transform .15s, box-shadow .2s;
 }
 .reminder-card:hover { transform: translateY(-1px); }
-.reminder-card.has-long-desc:not(.is-expanded) { cursor: pointer; }
+.reminder-top-area { display: flex; flex-direction: column; gap: 10px; }
+.reminder-top-area.can-toggle { cursor: pointer; }
 
 .reminder-card.in-window {
   border-color: rgba(var(--homelab-primary-rgb), .35);
@@ -291,6 +292,8 @@
   line-height: 1.65;
   color: #8b9bab;
   transition: max-height .25s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .reminder-desc.is-collapsed {
@@ -299,7 +302,6 @@
   position: relative;
   -webkit-mask-image: linear-gradient(to bottom, #000 30%, transparent 100%);
   mask-image: linear-gradient(to bottom, #000 30%, transparent 100%);
-  cursor: pointer;
 }
 
 .desc-expand-btn {
